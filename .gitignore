@@ -1,0 +1,12 @@
+.DS_Store
+node_modules/
+*.log
+
+# electron-vite 빌드 산출물 · electron-builder 패키지
+out/
+release/
+
+# sqlite db (진실 데이터 — 코드 아님)
+*.db
+*.db-*
+*.db.bak-*

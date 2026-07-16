@@ -1,0 +1,323 @@
+@import "tailwindcss";
+
+/* ── Design tokens (raw) — dark 모드에서 값만 교체 ───────────── */
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --panel-2: #f0f2f5;
+  --ink: #1a1d21;
+  --ink-2: #5b6472;
+  --line: #e2e6eb;
+  --accent: #3b6ef5;
+  --accent-ink: #fff;
+  --ok: #1f9d55;
+  --warn: #d9822b;
+  --warn-bg: #fff4e6;
+  --danger: #d64545;
+  --chip: #eef1f6;
+  --mono: #eef1f6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216;
+    --panel: #161a20;
+    --panel-2: #1c2129;
+    --ink: #e7ebf0;
+    --ink-2: #98a2b3;
+    --line: #262c35;
+    --accent: #5b86f7;
+    --accent-ink: #0b0e12;
+    --ok: #3ecf7f;
+    --warn: #e0a458;
+    --warn-bg: #2a2213;
+    --danger: #e56767;
+    --chip: #222834;
+    --mono: #12161c;
+  }
+}
+
+/* ── Tailwind theme: 토큰 → 유틸리티(bg-panel, text-ink-2, …) ── */
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
+    Pretendard, Roboto, "Malgun Gothic", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius-card: 14px;
+  --spacing-tabh: 44px;
+}
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-danger: var(--danger);
+  --color-chip: var(--chip);
+  --color-mono: var(--mono);
+  --shadow-card: 0 1px 2px rgba(20, 25, 35, 0.05), 0 6px 20px rgba(20, 25, 35, 0.05);
+}
+
+/* ── Base 요소 기본값 ──────────────────────────────────────── */
+@layer base {
+  html,
+  body {
+    margin: 0;
+  }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    padding: 0 0 64px;
+  }
+  a {
+    color: var(--accent);
+  }
+  body.viewing-web {
+    overflow: hidden;
+  }
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 6px 8px;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  input[type="number"] {
+    width: 64px;
+  }
+  input[type="date"] {
+    max-width: 150px;
+  }
+  input[type="radio"],
+  input[type="checkbox"] {
+    width: auto;
+    flex: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    overflow: visible;
+  }
+}
+
+/* ── 컴포넌트 프리미티브 (반복되는 버튼/입력·유틸리티로 표현 어려운 것) ── */
+@layer components {
+  .btn {
+    @apply cursor-pointer whitespace-nowrap rounded-[9px] border border-line bg-panel-2 px-3 py-[7px] text-ink transition-[0.12s];
+  }
+  .btn:hover {
+    border-color: var(--accent);
+  }
+  .btn-primary {
+    @apply border-transparent bg-accent font-semibold text-accent-ink;
+  }
+  .btn-primary:hover {
+    filter: brightness(1.06);
+  }
+  .btn-ghost {
+    @apply bg-transparent;
+  }
+  .btn-tiny {
+    @apply rounded-[7px] px-2 py-[3px] text-[12.5px];
+  }
+  .btn-icon {
+    @apply px-2 py-1 leading-none text-ink-2;
+  }
+  .btn-icon:hover {
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+  .btn-go {
+    @apply border-transparent bg-transparent px-[5px] py-px text-[13px] leading-none text-accent;
+  }
+  .btn-go:hover {
+    background: var(--panel-2);
+    border-color: var(--accent);
+  }
+
+  /* 하위 항목 불릿(↳) */
+  .sub-bullet::before {
+    content: "↳";
+    color: var(--ink-2);
+    font-size: 12px;
+  }
+  /* 여러 줄 말줄임 */
+  .clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* 드래그 상태 */
+  .dragover {
+    outline: 2px dashed var(--accent);
+    outline-offset: 1px;
+  }
+  .dragover-copy {
+    outline: 2px dashed var(--accent);
+    outline-offset: 2px;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+  .dragging {
+    opacity: 0.4;
+  }
+  .draghandle {
+    cursor: grab;
+    opacity: 0.55;
+  }
+  .draghandle:hover {
+    opacity: 1;
+    color: var(--accent);
+  }
+  .draghandle:active {
+    cursor: grabbing;
+  }
+
+  /* 저장 상태 점 */
+  .savedot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ok);
+  }
+  .savedot.busy,
+  .savedot.dirty {
+    background: var(--warn);
+  }
+  .savedot.dirty {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent);
+  }
+  .savedot.err {
+    background: var(--danger);
+  }
+
+  /* 스티키 헤더 배경(반투명 블러) */
+  .topbar {
+    backdrop-filter: saturate(1.4) blur(8px);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+  }
+
+  /* 브랜드 점 */
+  .brand-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  /* 업데이트 배너 배경 */
+  .upd {
+    background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+    border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  }
+  .upd.is-error {
+    background: color-mix(in srgb, var(--danger) 12%, var(--panel));
+    border-bottom-color: color-mix(in srgb, var(--danger) 30%, var(--line));
+  }
+  .upd.is-ok {
+    background: color-mix(in srgb, var(--ok) 12%, var(--panel));
+    border-bottom-color: color-mix(in srgb, var(--ok) 30%, var(--line));
+  }
+
+  /* 강조 배경(설정 안내·업데이트 배너) */
+  .tint-accent {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--ink);
+    color: var(--bg);
+    padding: 9px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0;
+    transition: 0.2s;
+    pointer-events: none;
+    z-index: 50;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* 우클릭 컨텍스트 메뉴 */
+  .ctxmenu {
+    position: fixed;
+    z-index: 200;
+    min-width: 190px;
+    padding: 5px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .ctxitem {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    text-align: left;
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .ctxitem:hover {
+    background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+  }
+
+  /* details/summary (규정 체크리스트) */
+  .rules summary {
+    cursor: pointer;
+    color: var(--ink);
+    font-weight: 600;
+    list-style: none;
+  }
+  .rules summary::-webkit-details-marker {
+    display: none;
+  }
+  .rules b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .kbd {
+    font: 12px var(--font-mono);
+    background: var(--chip);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 1px 5px;
+  }
+}

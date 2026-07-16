@@ -1,0 +1,88 @@
+# https://taskfile.dev
+version: "3"
+
+vars:
+  NODE_MODULES: node_modules
+
+tasks:
+  default:
+    desc: 사용 가능한 태스크 목록
+    silent: true
+    cmds:
+      - task --list
+
+  # ── 개발 ──────────────────────────────────────────────────
+  setup:
+    desc: 의존성 설치 (+ better-sqlite3 Electron ABI 리빌드)
+    cmds:
+      - npm install
+
+  dev:
+    desc: 개발 서버 (electron-vite · 창 + HMR)
+    aliases: [d]
+    cmds:
+      - npm run dev
+
+  start:
+    desc: 빌드 산출물 미리보기 (electron-vite preview)
+    deps: [build]
+    cmds:
+      - npm run start
+
+  # ── 검사 ──────────────────────────────────────────────────
+  typecheck:
+    desc: TypeScript 타입 체크
+    aliases: [tc]
+    cmds:
+      - npm run typecheck
+
+  test:
+    desc: 단위 테스트 (model · store · api)
+    aliases: [t]
+    cmds:
+      - npm test
+
+  check:
+    desc: typecheck + test
+    cmds:
+      - task: typecheck
+      - task: test
+
+  # ── 빌드 / 배포 ───────────────────────────────────────────
+  build:
+    desc: out/ 으로 번들 (main · preload · renderer)
+    aliases: [b]
+    cmds:
+      - npm run build
+
+  dist:
+    desc: 현재 OS 배포판 빌드
+    cmds:
+      - npm run dist
+
+  dist:mac:
+    desc: macOS 배포판 (dmg · zip)
+    cmds:
+      - npm run dist:mac
+
+  dist:win:
+    desc: Windows 배포판 (nsis · portable)
+    cmds:
+      - npm run dist:win
+
+  dist:linux:
+    desc: Linux 배포판 (AppImage · deb)
+    cmds:
+      - npm run dist:linux
+
+  # ── 유틸 ──────────────────────────────────────────────────
+  clean:
+    desc: 빌드 산출물 삭제 (out · release · dist)
+    cmds:
+      - rm -rf out release dist
+
+  reinstall:
+    desc: node_modules 지우고 재설치
+    cmds:
+      - rm -rf {{.NODE_MODULES}} package-lock.json
+      - npm install

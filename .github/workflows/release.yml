@@ -1,0 +1,340 @@
+# semver bump → tag → OS별 배포판 빌드 → GitHub Release
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Semver bump type
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      prerelease:
+        description: Mark GitHub Release as prerelease
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Bump version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Bump package.json (semver)
+        id: bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # package.json 버전 bump + 커밋 + 태그 (vX.Y.Z)
+          NEW_VERSION=$(npm version "${{ inputs.bump }}" -m "chore(release): v%s")
+          TAG="$NEW_VERSION"
+          VERSION="${NEW_VERSION#v}"
+
+          git push origin HEAD
+          git push origin "$TAG"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Bumped to $TAG"
+
+  build-mac:
+    name: Build (mac)
+    needs: bump
+    runs-on: macos-latest
+    # 서명+공증 포함. notarytool 60분 대기 여유 포함
+    timeout-minutes: 90
+    steps:
+      - name: Checkout ${{ needs.bump.outputs.tag }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.tag }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify signing secrets present
+        # 값은 출력하지 않고 존재/길이만 확인
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            val="${!name}"
+            if [ -z "$val" ]; then
+              echo "::error::$name secret is empty or not set"
+              missing=1
+            else
+              echo "$name is set (length=${#val})"
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          if [ "$APPLE_TEAM_ID" != "38Y6D6ZPFH" ]; then
+            echo "::warning::APPLE_TEAM_ID is '$APPLE_TEAM_ID' (expected 38Y6D6ZPFH)"
+          fi
+
+      # electron-builder CSC_LINK 자동 import는 temp keychain lock / partition-list
+      # 비밀번호 불일치로 codesign UI 대기 hang 이 자주 남 (macOS 15 runner).
+      # → 키체인을 직접 만들고 CSC_LINK 없이 identity 만 쓰게 한다.
+      - name: Import Developer ID into keychain
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+
+          echo "$CSC_LINK" | base64 --decode > "$CERT_PATH"
+          echo "decoded p12 bytes=$(wc -c < "$CERT_PATH")"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          # -l 잠금(sleep), -u 타임아웃 잠금, -t 초 — hang 방지 핵심
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$CSC_KEY_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security \
+            -T /usr/bin/productbuild
+
+          # -k 는 p12 비번이 아니라 키체인 비번이어야 함 (electron-builder 버그와 다름)
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed -e s/\"//g)
+
+          echo "--- codesigning identities ---"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+          # 이후 스텝에서 unlock 유지용
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+
+          rm -f "$CERT_PATH"
+
+      # codesign 이 UI 대기 hang 하면 여기서 30초 안에 실패 → 본빌드 전에 원인 확정
+      - name: Smoke test codesign (30s timeout)
+        run: |
+          set -euo pipefail
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          TEST_BIN="$RUNNER_TEMP/codesign-smoke"
+          cp /bin/ls "$TEST_BIN"
+          echo "[$(date -u +%H:%M:%S)] codesign smoke start"
+          # perl alarm = portable timeout (gtimeout 없을 수 있음)
+          perl -e 'alarm shift; exec @ARGV' 30 \
+            codesign --force --options runtime \
+              --sign "Lee JongWoo (38Y6D6ZPFH)" \
+              --keychain "$KEYCHAIN_PATH" \
+              "$TEST_BIN"
+          codesign -dv --verbose=2 "$TEST_BIN" 2>&1 | head -20
+          echo "[$(date -u +%H:%M:%S)] codesign smoke ok"
+
+      - name: Build mac (sign only, no notarize)
+        env:
+          # CSC_LINK 없음 → 위에서 import 한 키체인 identity 사용
+          CSC_IDENTITY_AUTO_DISCOVERY: "true"
+          # 공증은 다음 스텝에서 notarytool 로 분리 (hang 격리)
+          DEBUG: electron-builder
+        run: |
+          set -euo pipefail
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          echo "[$(date -u +%H:%M:%S)] dist:mac start (sign only)"
+          npm run dist:mac -- --publish never
+          echo "[$(date -u +%H:%M:%S)] dist:mac done"
+          ls -la release/ || true
+
+      # 서명된 .app 을 zip 으로 제출. Apple 큐 지연 대비 60분 대기.
+      - name: Notarize with notarytool
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find release -name 'i-daily.app' -type d | head -1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::i-daily.app not found under release/"
+            find release -maxdepth 3 -type d | head -50
+            exit 1
+          fi
+          echo "app=$APP_PATH"
+          ZIP_PATH="$RUNNER_TEMP/i-daily-notarize.zip"
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+          echo "[$(date -u +%H:%M:%S)] notarytool submit start (zip=$(wc -c < "$ZIP_PATH") bytes)"
+          xcrun notarytool submit "$ZIP_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait \
+            --timeout 60m \
+            --verbose
+          echo "[$(date -u +%H:%M:%S)] notarytool done — stapling"
+          xcrun stapler staple "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+          # DMG 가 이미 만들어져 있으면 staple 시도 (실패해도 앱 staple 은 성공)
+          for dmg in release/*.dmg; do
+            [ -f "$dmg" ] || continue
+            echo "stapling $dmg"
+            xcrun stapler staple "$dmg" || echo "::warning::could not staple $dmg (app staple ok)"
+          done
+          echo "[$(date -u +%H:%M:%S)] notarize+staple complete"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-${{ needs.bump.outputs.version }}
+          path: |
+            release/*
+            !release/*-unpacked/**
+            !release/mac/**
+            !release/mac-arm64/**
+            !release/builder-debug.yml
+            !release/builder-effective-config.yaml
+          if-no-files-found: error
+          retention-days: 14
+
+  build-win:
+    name: Build (win)
+    needs: bump
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout ${{ needs.bump.outputs.tag }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.tag }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build win
+        # WIN_CSC_* 없으면 미서명 (인증서 구매 후 Secrets 등록)
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # 인증서 없을 때 auto-discovery 실패로 job 깨지지 않게
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.WIN_CSC_LINK && 'true' || 'false' }}
+        run: npm run dist:win -- --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-${{ needs.bump.outputs.version }}
+          path: |
+            release/*
+            !release/*-unpacked/**
+            !release/win-unpacked/**
+            !release/builder-debug.yml
+            !release/builder-effective-config.yaml
+          if-no-files-found: error
+          retention-days: 14
+
+  build-linux:
+    name: Build (linux)
+    needs: bump
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout ${{ needs.bump.outputs.tag }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.tag }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build linux
+        run: npm run dist:linux -- --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ needs.bump.outputs.version }}
+          path: |
+            release/*
+            !release/*-unpacked/**
+            !release/linux-unpacked/**
+            !release/builder-debug.yml
+            !release/builder-effective-config.yaml
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: GitHub Release
+    needs: [bump, build-mac, build-win, build-linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List release files
+        run: find dist -type f | sort
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.bump.outputs.tag }}
+          name: ${{ needs.bump.outputs.tag }}
+          draft: false
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          files: dist/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,54 @@
+appId: com.util.idaily
+productName: i-daily
+directories:
+  output: release
+  buildResources: build
+publish:
+  provider: github
+  owner: preinpost
+  repo: i-daily
+  releaseType: release
+# electron-updater 가 Release 의 latest*.yml 을 읽어 새 버전 감지.
+# CI 는 설치본 + latest.yml/latest-mac.yml/latest-linux.yml + *.blockmap 을 업로드해야 함.
+# 제외 기반(electron-vite 권장): 기본 **/* 로 out/·node_modules(프로덕션 deps만 자동 프루닝)·package.json 포함,
+# 소스/설정/문서만 제외. 아이콘은 build/icon.{icns,ico,png} 있으면 자동 사용, 없으면 기본 아이콘.
+files:
+  - "!**/.vscode/*"
+  - "!src/*"
+  - "!test/*"
+  - "!electron.vite.config.{js,ts,mjs,cjs}"
+  - "!{tsconfig.json,bun.lock,package-lock.json}"
+  - "!{.gitignore,README.md}"
+  - "!tasks/*"
+# 네이티브 모듈(.node)은 asar 밖에 둬야 런타임 로드 가능.
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+mac:
+  icon: build/icon.icns
+  category: public.app-category.productivity
+  # 접두사 "Developer ID Application:" 붙이면 electron-builder가 거부 (자동 선택)
+  # 이름만 지정 → MinSoo LEE 인증서와 구분
+  identity: "Lee JongWoo (38Y6D6ZPFH)"
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # CI hang 격리: 공증은 워크플로에서 notarytool 로 분리 (아래 false)
+  # 로컬에서 공증까지 하려면 true 로 바꾸거나 APPLE_* 와 함께 afterSign 사용
+  notarize: false
+  target:
+    - dmg
+    - zip
+win:
+  icon: build/icon.ico
+  target:
+    - nsis
+    - portable
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  icon: build/icon.png
+  category: Office
+  target:
+    - AppImage
+    - deb
