@@ -65,12 +65,10 @@ const env = (k: string, d: string): string =>
 	(globalThis as { process?: { env?: Record<string, string | undefined> } })
 		.process?.env?.[k] ?? d;
 
-export type SpaceRule = { prefix: string; space: string };
 export type Config = {
 	owner: string; // 작성자 이름
 	jiraBase: string; // Jira 브라우즈 베이스 (예: https://your-org.atlassian.net/browse/)
 	spaces: string[]; // 스페이스 자동완성 목록
-	spaceRules: SpaceRule[]; // 티켓 prefix → 스페이스 매핑(guessSpace)
 	jiraClientId: string; // Jira OAuth 2.0 (3LO) client id (developer.atlassian.com 등록)
 	jiraClientSecret: string; // Jira OAuth 2.0 (3LO) client secret
 	reportAgent: string; // 주간보고 다듬기에 쓸 에이전트 id (claude|codex|pi|"")
@@ -82,7 +80,6 @@ export const DEFAULT_CONFIG: Config = {
 	owner: env("OWNER", ""),
 	jiraBase: env("JIRA_BASE", ""),
 	spaces: [],
-	spaceRules: [],
 	jiraClientId: env("JIRA_CLIENT_ID", ""),
 	jiraClientSecret: env("JIRA_CLIENT_SECRET", ""),
 	reportAgent: "",
@@ -96,20 +93,10 @@ export function mergeConfig(stored?: Partial<Config> | null): Config {
 	const spaces = Array.isArray(s.spaces)
 		? s.spaces.filter((x): x is string => typeof x === "string")
 		: DEFAULT_CONFIG.spaces;
-	let spaceRules = DEFAULT_CONFIG.spaceRules;
-	if (Array.isArray(s.spaceRules)) {
-		spaceRules = s.spaceRules.flatMap((r): SpaceRule[] => {
-			const o = r as Partial<SpaceRule>;
-			return typeof o.prefix === "string" && typeof o.space === "string"
-				? [{ prefix: o.prefix, space: o.space }]
-				: [];
-		});
-	}
 	return {
 		owner: str(s.owner, DEFAULT_CONFIG.owner),
 		jiraBase: str(s.jiraBase, DEFAULT_CONFIG.jiraBase),
 		spaces,
-		spaceRules,
 		jiraClientId: str(s.jiraClientId, DEFAULT_CONFIG.jiraClientId),
 		jiraClientSecret: str(s.jiraClientSecret, DEFAULT_CONFIG.jiraClientSecret),
 		reportAgent: str(s.reportAgent, DEFAULT_CONFIG.reportAgent),
@@ -538,31 +525,16 @@ export async function carryNew(store: Store, date: string): Promise<Doc> {
 	return doc;
 }
 
-// 티켓 prefix → 스페이스 추천 (config.spaceRules 기반)
-export function guessSpace(key: string): string {
-	const pfx = (key || "").split("-")[0].toUpperCase();
-	if (!pfx) return "";
-	const rule = getConfig().spaceRules.find(
-		(r) => (r.prefix || "").toUpperCase() === pfx,
-	);
-	return rule ? rule.space : "";
-}
 // 일일 항목의 진척값 — 명시 진척이 있으면 그대로, 없으면 완료=100·미완=빈값.
 function itemProgress(it: ListItem): number | "" {
 	if (typeof it.progress === "number") return it.progress;
 	return it.done ? 100 : "";
 }
-// 일일 진행 업무(체크리스트) → 전일 진행 업무 블록(스페이스/태스크)로 변환
+// 일일 진행 업무(체크리스트) → 전일 진행 업무 블록(라벨 없는 스페이스 1개)로 변환
 export function dailyToBlock(items: ListItem[]): Block {
-	const bySpace = new Map<string, Task[]>();
+	const tasks: Task[] = [];
 	for (const it of items ?? []) {
 		if (!((it.key || "").trim() || (it.desc || "").trim())) continue;
-		const label = guessSpace(it.key);
-		let tasks = bySpace.get(label);
-		if (!tasks) {
-			tasks = [];
-			bySpace.set(label, tasks);
-		}
 		tasks.push({
 			key: it.key || "",
 			desc: it.desc || "",
@@ -571,9 +543,11 @@ export function dailyToBlock(items: ListItem[]): Block {
 			subs: [...(it.subs || [])],
 		});
 	}
-	const spaces: Space[] = [];
-	bySpace.forEach((tasks, label) => spaces.push({ label, tasks }));
-	return { spaces, issues: "없음", collab: "없음" };
+	return {
+		spaces: tasks.length ? [{ label: "", tasks }] : [],
+		issues: "없음",
+		collab: "없음",
+	};
 }
 
 // ───────────────────────── Doc ↔ 정규화 행 (테이블이 진실) ─────────────────────────

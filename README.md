@@ -129,7 +129,6 @@ DB 위치는 `app.getPath('userData')/i-daily.db`다(패키지 앱 번들은 읽
 | `owner` | 작성자 이름(헤더·문서 메타) |
 | `jiraBase` | Jira 호스트 (예: `https://your-org.atlassian.net`) — `/browse/티켓`은 자동 |
 | `spaces` | 스페이스 입력 자동완성 목록 |
-| `spaceRules` | 티켓 prefix → 스페이스 자동 추천(`PREFIX=스페이스`) |
 
 - API: `GET/PUT /api/config`.
 - 미설정 값은 환경변수(`OWNER` · `JIRA_BASE`)로 초기값만 주입할 수 있다(공개 배포 시 비운다).
