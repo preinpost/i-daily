@@ -1,7 +1,7 @@
 {
   "name": "i-daily",
   "productName": "i-daily",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "데일리 업무일지 데스크톱 앱 (Electron · Windows/macOS/Linux)",
   "main": "./out/main/index.js",
   "author": {
