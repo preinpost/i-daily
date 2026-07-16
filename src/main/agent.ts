@@ -41,6 +41,8 @@ function augmentedPath(): string {
   const extra = [
     "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin",
     join(home, ".local", "bin"),
+    join(home, ".local", "share", "mise", "shims"),  // mise 관리 도구(node/bun/… 전카버)
+    join(home, ".asdf", "shims"),                     // asdf 관리 도구
     join(home, ".bun", "bin"),
     join(home, ".cargo", "bin"),
     join(home, ".npm-global", "bin"),
@@ -92,11 +94,12 @@ function getVersion(path: string, args: string[]): Promise<string> {
 
 // ───────────────────────── 생성 ─────────────────────────
 type GenerateOpts = { from?: string; to?: string; agentId?: string; useAgent?: boolean };
-async function generate(opts: GenerateOpts): Promise<any> {
+type GenerateResult = { ok: true; from: string; to: string; count: number; text: string; deterministic: string; usedAgent: string | null; warn?: string };
+async function generate(opts: GenerateOpts): Promise<GenerateResult> {
   const win = weekWindow();
   const from = opts.from || win.from;
   const to = opts.to || win.to;
-  const cfg = readConfig(_db, _user) as any;
+  const cfg = readConfig(_db, _user);
   setConfig(cfg);   // guessSpace(스페이스 보완)가 spaceRules를 읽도록 주입
 
   const rows = queryTasks(_db, _user, { from, to });

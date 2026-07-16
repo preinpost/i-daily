@@ -111,7 +111,7 @@ DB 위치는 `app.getPath('userData')/i-daily.db`다(패키지 앱 번들은 읽
 
 하루치 `Doc`는 정규화된 행들로 왕복한다.
 
-- `days(user, date, owner, channel, preamble, updated_at, PK(user, date))` — 하루 메타.
+- `days(user, date, owner, preamble, updated_at, PK(user, date))` — 하루 메타.
 - `sections(user, date, pos, kind, title, body)` — 순서 있는 섹션(`raw`만 body).
 - `blocks(user, date, side, issues, collab)` — 스크럼 블록별 이슈/협업. side ∈ prev | today.
 - `spaces(...)` → `tasks(... jkey, descr, progress, due, subs_json)` — 스크럼 태스크(하위 = subs_json).

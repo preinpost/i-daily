@@ -1,8 +1,8 @@
-// store.ts — 저장소. 진실=정규화 테이블(better-sqlite3). fsStore는 md import/export(옵시디언) 용도.
+// store.ts — 저장소. 진실=정규화 테이블(better-sqlite3).
 // days.doc JSON blob은 폐기 → 하루치 Doc은 days/sections/blocks/spaces/tasks/list_items 행으로 왕복.
 import Database from "better-sqlite3";
 import {
-  DAILY_DIR, DATE_RE, parseDoc, serializeDoc, docToRows, rowsToDoc, mergeConfig,
+  docToRows, rowsToDoc, mergeConfig,
   type Store, type Doc, type DocRows, type TaskRow, type TaskFilter, type Shortcut, type Config,
 } from "./model.ts";
 
@@ -80,11 +80,6 @@ export function openDb(path: string): DB {
   return db;
 }
 
-let _db: DB | null = null;
-export function localDb(): DB {
-  if (!_db) _db = openDb((globalThis as any).process?.env?.DB_PATH ?? "i-daily.db");
-  return _db;
-}
 // 테스트/도구용: 스키마 적용된 DB 하나 (기본 in-memory).
 export function createDb(path = ":memory:"): DB {
   const db = new Database(path);
@@ -95,18 +90,18 @@ export function createDb(path = ":memory:"): DB {
 
 // ───────────────────────── 정규화 왕복 (sync 코어) ─────────────────────────
 function listDates(db: DB, user: string): string[] {
-  return (db.prepare("SELECT date FROM days WHERE user=? ORDER BY date").all(user) as any[]).map((r) => r.date);
+  return (db.prepare("SELECT date FROM days WHERE user=? ORDER BY date").all(user) as { date: string }[]).map((r) => r.date);
 }
 function readDoc(db: DB, user: string, date: string): Doc | null {
-  const day: any = db.prepare("SELECT owner,preamble FROM days WHERE user=? AND date=?").get(user, date);
+  const day = db.prepare("SELECT owner,preamble FROM days WHERE user=? AND date=?").get(user, date) as { owner: string; preamble: string } | undefined;
   if (!day) return null;
   const rows: DocRows = {
     day: { owner: day.owner, preamble: day.preamble },
-    sections: db.prepare("SELECT pos,kind,title,body FROM sections WHERE user=? AND date=? ORDER BY pos").all(user, date) as any,
-    blocks: db.prepare("SELECT side,issues,collab FROM blocks WHERE user=? AND date=?").all(user, date) as any,
-    spaces: db.prepare("SELECT side,pos,label FROM spaces WHERE user=? AND date=? ORDER BY pos").all(user, date) as any,
-    tasks: db.prepare("SELECT side,space_pos,pos,jkey,descr,progress,due,subs_json FROM tasks WHERE user=? AND date=? ORDER BY pos").all(user, date) as any,
-    listItems: db.prepare("SELECT pos,done,jkey,descr,progress,due,subs_json FROM list_items WHERE user=? AND date=? ORDER BY pos").all(user, date) as any,
+    sections: db.prepare("SELECT pos,kind,title,body FROM sections WHERE user=? AND date=? ORDER BY pos").all(user, date) as DocRows["sections"],
+    blocks: db.prepare("SELECT side,issues,collab FROM blocks WHERE user=? AND date=?").all(user, date) as DocRows["blocks"],
+    spaces: db.prepare("SELECT side,pos,label FROM spaces WHERE user=? AND date=? ORDER BY pos").all(user, date) as DocRows["spaces"],
+    tasks: db.prepare("SELECT side,space_pos,pos,jkey,descr,progress,due,subs_json FROM tasks WHERE user=? AND date=? ORDER BY pos").all(user, date) as DocRows["tasks"],
+    listItems: db.prepare("SELECT pos,done,jkey,descr,progress,due,subs_json FROM list_items WHERE user=? AND date=? ORDER BY pos").all(user, date) as DocRows["listItems"],
   };
   return rowsToDoc(date, rows);
 }
@@ -131,9 +126,9 @@ function writeDoc(db: DB, user: string, date: string, doc: Doc): void {
 }
 // ───────────────────────── config (settings 테이블, user별 JSON 한 행) ─────────────────────────
 export function readConfig(db: DB, user: string): Config {
-  const row: any = db.prepare("SELECT json FROM settings WHERE user=?").get(user);
-  let stored: any = null;
-  if (row) { try { stored = JSON.parse(row.json); } catch { stored = null; } }
+  const row = db.prepare("SELECT json FROM settings WHERE user=?").get(user) as { json: string } | undefined;
+  let stored: Partial<Config> | null = null;
+  if (row) { try { stored = JSON.parse(row.json) as Partial<Config>; } catch { stored = null; } }
   return mergeConfig(stored);
 }
 export function writeConfig(db: DB, user: string, cfg: Partial<Config>): Config {
@@ -144,7 +139,7 @@ export function writeConfig(db: DB, user: string, cfg: Partial<Config>): Config 
 }
 // settings 행이 아직 없으면(최초 실행) true → 프런트를 설정 페이지로 유도.
 export function hasConfig(db: DB, user: string): boolean {
-  return !!db.prepare("SELECT 1 FROM settings WHERE user=?").get(user);
+  return db.prepare("SELECT 1 FROM settings WHERE user=?").get(user) !== undefined;
 }
 
 function readShortcuts(db: DB, user: string): Shortcut[] {
@@ -174,7 +169,8 @@ function parseSubs(json: unknown): string[] {
   if (typeof json !== "string" || !json) return [];
   try {
     const a = JSON.parse(json);
-    return Array.isArray(a) ? a.filter((s) => typeof s === "string" && s.trim()).map((s) => s.trim()) : [];
+    if (!Array.isArray(a)) return [];
+    return a.flatMap((s) => (typeof s === "string" && s.trim() ? [s.trim()] : []));
   } catch {
     return [];
   }
@@ -182,75 +178,54 @@ function parseSubs(json: unknown): string[] {
 
 // 파생 뷰 쿼리 (에이전트·대시보드용). side ∈ prev|today|daily.
 export function queryTasks(db: DB, user: string, f: TaskFilter): TaskRow[] {
-  const where = ["user=?"]; const args: any[] = [user];
+  const where = ["user=?"]; const args: string[] = [user];
   if (f.from) { where.push("date>=?"); args.push(f.from); }
   if (f.to) { where.push("date<=?"); args.push(f.to); }
   if (f.side) { where.push("side=?"); args.push(f.side); }
   if (f.key) { where.push("jkey LIKE ?"); args.push(`%${f.key.toUpperCase()}%`); }
   const sql = `SELECT date, side, space, jkey AS key, descr AS "desc", progress, due, subs_json FROM task_rows WHERE ${where.join(" AND ")} ORDER BY date, side`;
-  const rows = db.prepare(sql).all(...args) as any[];
+  type Raw = { date: string; side: string; space: string; key: string; desc: string; progress: number | null; due: string; subs_json: string };
+  const rows = db.prepare(sql).all(...args) as Raw[];
   return rows.map((r) => ({
     date: r.date, side: r.side, space: r.space, key: r.key, desc: r.desc, progress: r.progress, due: r.due,
     subs: parseSubs(r.subs_json),
-  })) as TaskRow[];
+  }));
 }
 
 // ───────────────────────── v1(days.doc JSON blob) → 정규화 자동 마이그레이션 ─────────────────────────
 // 옛 days 테이블에 doc 컬럼이 있으면 1회 변환. 원본은 *_v1로 남겨 안전(수동 삭제 가능).
+// best-effort 실행 — 실패해도 마이그레이션 전체를 막지 않음(구 스키마 편차 흡수).
+// 실패 사유는 skipped에 모아 호출측이 필요시 참조하도록 반환.
+function tryStep(label: string, fn: () => void, skipped: string[]): void {
+  try { fn(); } catch (e) { skipped.push(`${label}: ${e instanceof Error ? e.message : String(e)}`); }
+}
+// 손상된 레거시 JSON은 null 반환(해당 행만 스킵).
+function parseJson<T>(s: string): T | null {
+  try { return JSON.parse(s) as T; } catch { return null; }
+}
 function migrateV1(db: DB): void {
   const hasDays = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='days'").get();
   if (!hasDays) return;
-  const cols = db.pragma("table_info('days')") as any[];
+  const cols = db.pragma("table_info('days')") as { name: string }[];
   if (!cols.some((c) => c.name === "doc")) return;   // 이미 v2
-  const oldDays = db.prepare("SELECT user,date,doc FROM days").all() as any[];
-  let oldSc: any[] = [];
-  try { oldSc = db.prepare("SELECT user,json FROM shortcuts").all() as any[]; } catch {}
+  const oldDays = db.prepare("SELECT user,date,doc FROM days").all() as { user: string; date: string; doc: string }[];
+  const skipped: string[] = [];
+  let oldSc: { user: string; json: string }[] = [];
+  tryStep("shortcuts 읽기", () => { oldSc = db.prepare("SELECT user,json FROM shortcuts").all() as { user: string; json: string }[]; }, skipped);
   db.exec("ALTER TABLE days RENAME TO days_v1");
-  try { db.exec("ALTER TABLE tasks RENAME TO tasks_v1"); } catch {}
-  try { db.exec("ALTER TABLE shortcuts RENAME TO shortcuts_v1"); } catch {}
+  tryStep("tasks 이름변경", () => db.exec("ALTER TABLE tasks RENAME TO tasks_v1"), skipped);
+  tryStep("shortcuts 이름변경", () => db.exec("ALTER TABLE shortcuts RENAME TO shortcuts_v1"), skipped);
   db.exec(SCHEMA);
-  let nd = 0, ns = 0;
-  for (const r of oldDays) { try { writeDoc(db, r.user, r.date, JSON.parse(r.doc) as Doc); nd++; } catch {} }
-  for (const r of oldSc) { try { writeShortcuts(db, r.user, JSON.parse(r.json)); ns++; } catch {} }
-  console.log(`migrated v1→v2: ${nd} days, ${ns} shortcut sets (원본은 *_v1 테이블에 보존)`);
+  for (const r of oldDays) { const d = parseJson<Doc>(r.doc); if (d) tryStep(`day ${r.date}`, () => writeDoc(db, r.user, r.date, d), skipped); }
+  for (const r of oldSc) { const sc = parseJson<Shortcut[]>(r.json); if (sc) tryStep(`shortcuts ${r.user}`, () => writeShortcuts(db, r.user, sc), skipped); }
 }
 
 // list_items에 progress·due 컬럼 추가(일일 진행 업무도 진척/마감 보유). 기존 DB는 ALTER, 뷰는 재생성.
 function migrateV2(db: DB): void {
-  const cols = db.pragma("table_info('list_items')") as any[];
+  const cols = db.pragma("table_info('list_items')") as { name: string }[];
   const has = (n: string) => cols.some((c) => c.name === n);
   if (!has("progress")) db.exec("ALTER TABLE list_items ADD COLUMN progress INTEGER");
   if (!has("due")) db.exec("ALTER TABLE list_items ADD COLUMN due TEXT NOT NULL DEFAULT ''");
   db.exec("DROP VIEW IF EXISTS task_rows");   // 옛 뷰(daily progress=NULL)일 수 있어 항상 최신으로 재생성
   db.exec(TASK_ROWS_VIEW);
-}
-
-// ───────── 옵시디언 escape hatch: ~/daily/*.md 파일 (import/export 용) ─────────
-export async function fsStore(): Promise<Store> {
-  const fs = await import("node:fs");
-  const path = (d: string): string => `${DAILY_DIR}/${d}.md`;
-  return {
-    async list() {
-      if (!fs.existsSync(DAILY_DIR)) return [];
-      return fs.readdirSync(DAILY_DIR)
-        .filter((f) => f.endsWith(".md") && DATE_RE.test(f.slice(0, -3)))
-        .map((f) => f.slice(0, -3)).sort();
-    },
-    async get(date) {
-      const p = path(date);
-      return fs.existsSync(p) ? parseDoc(fs.readFileSync(p, "utf8"), date) : null;
-    },
-    async put(date, doc) {
-      fs.mkdirSync(DAILY_DIR, { recursive: true });
-      fs.writeFileSync(path(date), serializeDoc(doc));
-    },
-    async getShortcuts() {
-      const p = `${DAILY_DIR}/shortcuts.json`;
-      try { return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : []; } catch { return []; }
-    },
-    async putShortcuts(items) {
-      fs.mkdirSync(DAILY_DIR, { recursive: true });
-      fs.writeFileSync(`${DAILY_DIR}/shortcuts.json`, JSON.stringify(items, null, 2));
-    },
-  };
 }
