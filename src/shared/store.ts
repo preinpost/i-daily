@@ -368,6 +368,30 @@ export function queryTasks(db: DB, user: string, f: TaskFilter): TaskRow[] {
 	}));
 }
 
+// 과거 일지에 쓴 스페이스 라벨 — 최근 사용순, 대소문자 무시 중복 제거.
+// 설정 수동 목록 대신 스크럼 입력 자동완성 후보로 쓴다.
+export function listSpaceLabels(db: DB, user: string): string[] {
+	const rows = db
+		.prepare(
+			`SELECT label, MAX(date) AS last_used
+         FROM spaces
+        WHERE user = ? AND TRIM(label) <> ''
+        GROUP BY label
+        ORDER BY last_used DESC, label COLLATE NOCASE ASC`,
+		)
+		.all(user) as { label: string; last_used: string }[];
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const r of rows) {
+		const t = (r.label || "").trim();
+		const k = t.toLowerCase();
+		if (!t || seen.has(k)) continue;
+		seen.add(k);
+		out.push(t);
+	}
+	return out;
+}
+
 // ───────────────────────── v1(days.doc JSON blob) → 정규화 자동 마이그레이션 ─────────────────────────
 // 옛 days 테이블에 doc 컬럼이 있으면 1회 변환. 원본은 *_v1로 남겨 안전(수동 삭제 가능).
 // best-effort 실행 — 실패해도 마이그레이션 전체를 막지 않음(구 스키마 편차 흡수).

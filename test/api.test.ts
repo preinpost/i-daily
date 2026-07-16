@@ -28,7 +28,6 @@ test("route: config 최초 firstRun → PUT 저장 → configured", async () => 
 		{
 			owner: "홍길동",
 			jiraBase: "https://jira.test", // host만 — /browse/ 자동
-			spaces: ["backend"],
 		},
 		U,
 		d,
@@ -119,4 +118,30 @@ test("route: prev-daily가 직전 일일 items + block 반환", async () => {
 	expect(r.body.items[0].progress).toBe(70);
 	expect(r.body.items[0].subs).toEqual(["하위A"]);
 	expect(r.body.block.spaces.length >= 1).toBe(true);
+});
+
+test("route: 과거 일지 스페이스 라벨 학습 (/api/spaces · /api/days)", async () => {
+	const d = db();
+	const empty = await route("GET", "/api/spaces", undefined, U, d);
+	expect(empty.status).toBe(200);
+	expect(empty.body.spaces).toEqual([]);
+
+	const day1 = parseDoc(
+		"## 데일리 스크럼\n\n**[금일 진행 업무]**\n  + **[backend]**\n    + [A-1](https://x/A-1) 작업\n  + **[infra]**\n    + [B-1](https://x/B-1) 작업\n- 이슈 사항: 없음\n- 협업 및 기타: 없음",
+		"2026-07-10",
+	);
+	const day2 = parseDoc(
+		"## 데일리 스크럼\n\n**[금일 진행 업무]**\n  + **[Backend]**\n    + [A-2](https://x/A-2) 작업\n  + **[qa]**\n    + [C-1](https://x/C-1) 작업\n- 이슈 사항: 없음\n- 협업 및 기타: 없음",
+		"2026-07-11",
+	);
+	await route("PUT", "/api/day/2026-07-10", day1, U, d);
+	await route("PUT", "/api/day/2026-07-11", day2, U, d);
+
+	const sp = await route("GET", "/api/spaces", undefined, U, d);
+	expect(sp.status).toBe(200);
+	// 최근 사용순, 대소문자 중복 제거(최근 casing 유지)
+	expect(sp.body.spaces).toEqual(["Backend", "qa", "infra"]);
+
+	const days = await route("GET", "/api/days", undefined, U, d);
+	expect(days.body.spaces).toEqual(["Backend", "qa", "infra"]);
 });

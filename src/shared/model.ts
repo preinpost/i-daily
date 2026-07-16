@@ -68,7 +68,6 @@ const env = (k: string, d: string): string =>
 export type Config = {
 	owner: string; // 작성자 이름
 	jiraBase: string; // Jira 브라우즈 베이스 (예: https://your-org.atlassian.net/browse/)
-	spaces: string[]; // 스페이스 자동완성 목록
 	jiraClientId: string; // Jira OAuth 2.0 (3LO) client id (developer.atlassian.com 등록)
 	jiraClientSecret: string; // Jira OAuth 2.0 (3LO) client secret
 	reportAgent: string; // 주간보고 다듬기에 쓸 에이전트 id (claude|codex|pi|"")
@@ -79,7 +78,6 @@ export type Config = {
 export const DEFAULT_CONFIG: Config = {
 	owner: env("OWNER", ""),
 	jiraBase: env("JIRA_BASE", ""),
-	spaces: [],
 	jiraClientId: env("JIRA_CLIENT_ID", ""),
 	jiraClientSecret: env("JIRA_CLIENT_SECRET", ""),
 	reportAgent: "",
@@ -90,13 +88,9 @@ export function mergeConfig(stored?: Partial<Config> | null): Config {
 	const s = (stored ?? {}) as Record<string, unknown>;
 	const str = (v: unknown, d: string): string =>
 		typeof v === "string" ? v : d;
-	const spaces = Array.isArray(s.spaces)
-		? s.spaces.filter((x): x is string => typeof x === "string")
-		: DEFAULT_CONFIG.spaces;
 	return {
 		owner: str(s.owner, DEFAULT_CONFIG.owner),
 		jiraBase: str(s.jiraBase, DEFAULT_CONFIG.jiraBase),
-		spaces,
 		jiraClientId: str(s.jiraClientId, DEFAULT_CONFIG.jiraClientId),
 		jiraClientSecret: str(s.jiraClientSecret, DEFAULT_CONFIG.jiraClientSecret),
 		reportAgent: str(s.reportAgent, DEFAULT_CONFIG.reportAgent),

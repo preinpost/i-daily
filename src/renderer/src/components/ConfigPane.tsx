@@ -27,7 +27,6 @@ export function ConfigPane({
 	const toast = useToast();
 	const [owner, setOwner] = useState(config.owner);
 	const [jira, setJira] = useState(config.jiraBase);
-	const [spaces, setSpaces] = useState((config.spaces || []).join(", "));
 	const [clientId, setClientId] = useState(config.jiraClientId || "");
 	const [clientSecret, setClientSecret] = useState(
 		config.jiraClientSecret || "",
@@ -45,7 +44,6 @@ export function ConfigPane({
 	useEffect(() => {
 		setOwner(config.owner);
 		setJira(config.jiraBase);
-		setSpaces((config.spaces || []).join(", "));
 		setClientId(config.jiraClientId || "");
 		setClientSecret(config.jiraClientSecret || "");
 		setReportAgent(config.reportAgent || "");
@@ -84,10 +82,6 @@ export function ConfigPane({
 		const next = {
 			owner: owner.trim(),
 			jiraBase: jira.trim(),
-			spaces: spaces
-				.split(",")
-				.map((s) => s.trim())
-				.filter(Boolean),
 			jiraClientId: clientId.trim(),
 			jiraClientSecret: clientSecret.trim(),
 			reportAgent: reportAgent.trim(),
@@ -192,19 +186,6 @@ export function ConfigPane({
 					</small>
 				</label>
 
-				<label className="flex flex-col gap-1.5">
-					<span className="text-[13px] font-bold text-ink">스페이스 목록</span>
-					<input
-						className={fieldCls}
-						placeholder="쉼표로 구분 — 예: backend, infra, qa"
-						value={spaces}
-						onChange={(e) => setSpaces(e.target.value)}
-					/>
-					<small className="text-xs text-ink-2">
-						스페이스 입력 자동완성 목록.
-					</small>
-				</label>
-
 				<h3 className="mt-4 border-t border-line pt-4 text-[15px] font-extrabold text-ink">
 					🎫 Jira 연동 (OAuth 2.0 · 3LO)
 				</h3>
@@ -254,8 +235,8 @@ export function ConfigPane({
 						onChange={(e) => setClientSecret(e.target.value)}
 					/>
 					<small className="text-xs text-ink-2">
-						secret 은 로컬에만 저장되며, 발급된 토큰은 OS 키체인으로
-						암호화됩니다.
+						client secret·발급 토큰은 로컬 SQLite에만 저장됩니다(외부 전송
+						없음).
 					</small>
 				</label>
 

@@ -2,6 +2,7 @@ import { test, expect } from "./tiny.ts";
 import {
 	sqliteStore,
 	queryTasks,
+	listSpaceLabels,
 	createDb,
 	readJiraAuth,
 	writeJiraAuth,
@@ -86,6 +87,27 @@ test("shortcuts 유저별 격리 + 순서 보존", async () => {
 	expect(await sqliteStore(db, "u1").getShortcuts()).toEqual([
 		{ name: "Only", url: "https://z" },
 	]);
+});
+
+test("listSpaceLabels: 최근 사용순 · 대소문자 중복 제거 · 유저 격리", async () => {
+	const db = freshDb();
+	const u1 = sqliteStore(db, "u1");
+	await u1.put(
+		"2026-07-10",
+		parseDoc(
+			"## 데일리 스크럼\n\n**[금일 진행 업무]**\n  + **[backend]**\n    + [A-1](https://x/A-1) x\n  + **[infra]**\n    + [B-1](https://x/B-1) y\n- 이슈 사항: 없음\n- 협업 및 기타: 없음",
+			"2026-07-10",
+		),
+	);
+	await u1.put(
+		"2026-07-12",
+		parseDoc(
+			"## 데일리 스크럼\n\n**[금일 진행 업무]**\n  + **[Backend]**\n    + [A-2](https://x/A-2) z\n- 이슈 사항: 없음\n- 협업 및 기타: 없음",
+			"2026-07-12",
+		),
+	);
+	expect(listSpaceLabels(db, "u1")).toEqual(["Backend", "infra"]);
+	expect(listSpaceLabels(db, "u2")).toEqual([]);
 });
 
 test("jira_auth 왕복 + 유저 격리 + clear", () => {

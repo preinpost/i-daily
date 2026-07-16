@@ -34,7 +34,6 @@ export type Shortcut = { name: string; url: string };
 export type Config = {
 	owner: string;
 	jiraBase: string;
-	spaces: string[];
 	jiraClientId: string;
 	jiraClientSecret: string;
 	reportAgent: string;

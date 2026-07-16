@@ -337,10 +337,33 @@ export function normCfg(c?: Partial<Config> | null): Config {
 	return {
 		owner: s.owner || "",
 		jiraBase: s.jiraBase || "",
-		spaces: Array.isArray(s.spaces) ? s.spaces : [],
 		jiraClientId: s.jiraClientId || "",
 		jiraClientSecret: s.jiraClientSecret || "",
 		reportAgent: s.reportAgent || "",
 		reportPrompt: s.reportPrompt || "",
 	};
+}
+
+/* ── space autocomplete ── */
+// 과거 라벨 + 현재 문서 라벨 합치기(대소문자 무시 중복 제거, 과거 순서 유지).
+export function mergeSpaceLabels(
+	history: string[],
+	doc: Doc | null | undefined,
+): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	const push = (raw: string) => {
+		const t = (raw || "").trim();
+		const k = t.toLowerCase();
+		if (!t || seen.has(k)) return;
+		seen.add(k);
+		out.push(t);
+	};
+	for (const s of history || []) push(s);
+	if (doc?.scrum) {
+		for (const w of ["prev", "today"] as const) {
+			for (const sp of doc.scrum[w]?.spaces || []) push(sp.label || "");
+		}
+	}
+	return out;
 }
