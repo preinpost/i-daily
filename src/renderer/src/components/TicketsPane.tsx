@@ -52,6 +52,29 @@ export function TicketsPane({ active }: { active: boolean }) {
 		if (active) load(false);
 	}, [active]);
 
+	// ⌘R / Ctrl+R / F5 → 티켓 새로고침 (티켓 화면에서만)
+	useEffect(() => {
+		if (!active) return;
+		const onKey = (e: KeyboardEvent) => {
+			const isRefresh =
+				e.key === "F5" ||
+				((e.metaKey || e.ctrlKey) && (e.key === "r" || e.key === "R"));
+			if (!isRefresh) return;
+			const t = e.target as HTMLElement | null;
+			if (
+				t &&
+				(t.tagName === "INPUT" ||
+					t.tagName === "TEXTAREA" ||
+					t.isContentEditable)
+			)
+				return;
+			e.preventDefault();
+			load(true);
+		};
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [active]);
+
 	function addToDaily(t: Ticket) {
 		const r = ensureDailyItem(doc, t);
 		if ("error" in r) return toast(r.error);
@@ -85,6 +108,7 @@ export function TicketsPane({ active }: { active: boolean }) {
 					<button
 						type="button"
 						className="btn btn-ghost"
+						title="새로고침 (⌘R / Ctrl+R / F5)"
 						onClick={() => load(true)}
 					>
 						↻ 새로고침
