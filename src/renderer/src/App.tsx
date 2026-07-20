@@ -6,6 +6,7 @@ import { Tabs, type View } from "./components/Tabs";
 import { TopHeader } from "./components/TopHeader";
 import { DayCard } from "./components/DayCard";
 import { TicketsPane } from "./components/TicketsPane";
+import { LunchPane } from "./components/LunchPane";
 import { ConfigPane } from "./components/ConfigPane";
 import { WeeklyReportPane } from "./components/WeeklyReportPane";
 import { api } from "./lib/api";
@@ -327,6 +328,7 @@ export function App() {
 			</main>
 
 			<TicketsPane active={view === "tickets"} />
+			<LunchPane active={view === "lunch"} config={config} />
 			<WeeklyReportPane
 				active={view === "report"}
 				config={config}

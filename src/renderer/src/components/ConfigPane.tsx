@@ -32,6 +32,10 @@ export function ConfigPane({
 		config.jiraClientSecret || "",
 	);
 	const [reportAgent, setReportAgent] = useState(config.reportAgent || "");
+	const [kakaoKey, setKakaoKey] = useState(config.kakaoRestKey || "");
+	const [lunchLat, setLunchLat] = useState(config.lunchLat || "");
+	const [lunchLng, setLunchLng] = useState(config.lunchLng || "");
+	const [lunchRadius, setLunchRadius] = useState(config.lunchRadius || "1000");
 	const [agents, setAgents] = useState<
 		{ id: string; label: string; version: string; path: string }[] | null
 	>(null);
@@ -47,6 +51,10 @@ export function ConfigPane({
 		setClientId(config.jiraClientId || "");
 		setClientSecret(config.jiraClientSecret || "");
 		setReportAgent(config.reportAgent || "");
+		setKakaoKey(config.kakaoRestKey || "");
+		setLunchLat(config.lunchLat || "");
+		setLunchLng(config.lunchLng || "");
+		setLunchRadius(config.lunchRadius || "1000");
 	}, [config]);
 
 	async function scanAgents() {
@@ -85,6 +93,10 @@ export function ConfigPane({
 			jiraClientId: clientId.trim(),
 			jiraClientSecret: clientSecret.trim(),
 			reportAgent: reportAgent.trim(),
+			kakaoRestKey: kakaoKey.trim(),
+			lunchLat: lunchLat.trim(),
+			lunchLng: lunchLng.trim(),
+			lunchRadius: lunchRadius.trim() || "1000",
 		};
 		const r = await api<any>("PUT", "/api/config", next);
 		if (r.ok && r.json && r.json.config) {
@@ -305,6 +317,96 @@ export function ConfigPane({
 						</label>
 					))}
 				</div>
+
+				<h3 className="mt-4 border-t border-line pt-4 text-[15px] font-extrabold text-ink">
+					🍽️ 점심 (카카오 로컬 API)
+				</h3>
+				<p className="tint-accent m-0 rounded-[10px] px-3.5 py-2.5 text-xs text-ink">
+					<button
+						type="button"
+						className="cursor-pointer border-0 bg-transparent p-0 font-inherit text-accent underline"
+						onClick={() =>
+							window.open(
+								"https://developers.kakao.com/console/my-app",
+								"_blank",
+								"noopener",
+							)
+						}
+					>
+						developers.kakao.com
+					</button>{" "}
+					→ 내 앱 → 플랫폼 <b>Web</b> 추가 → 사이트 도메인 등록 →{" "}
+					<b>REST API 키</b>를 아래에 붙여넣으세요. 키는 로컬 SQLite에만
+					저장됩니다.
+				</p>
+
+				<label className="flex flex-col gap-1.5">
+					<span className="text-[13px] font-bold text-ink">
+						카카오 REST API 키
+					</span>
+					<input
+						className={fieldCls}
+						placeholder="KakaoAK ..."
+						value={kakaoKey}
+						onChange={(e) => setKakaoKey(e.target.value)}
+					/>
+				</label>
+
+				<div className="flex flex-col gap-1.5">
+					<span className="text-[13px] font-bold text-ink">
+						사무실 좌표 (위도·경도, WGS84)
+					</span>
+					<div className="flex items-center gap-2">
+						<input
+							className={fieldCls}
+							style={{ width: 120 }}
+							placeholder="위도(y)"
+							value={lunchLat}
+							onChange={(e) => setLunchLat(e.target.value)}
+						/>
+						<input
+							className={fieldCls}
+							style={{ width: 120 }}
+							placeholder="경도(x)"
+							value={lunchLng}
+							onChange={(e) => setLunchLng(e.target.value)}
+						/>
+						<button
+							type="button"
+							className="btn btn-ghost"
+							title="현재 위치 좌표로 채우기 (브라우저 위치 권한)"
+							onClick={() => {
+								navigator.geolocation?.getCurrentPosition(
+									(pos) => {
+										setLunchLat(String(pos.coords.latitude));
+										setLunchLng(String(pos.coords.longitude));
+										toast("현재 위치 좌표를 채웠어요");
+									},
+									() => toast("위치 권한이 필요해요"),
+								);
+							}}
+						>
+							📍 현재 위치
+						</button>
+					</div>
+					<small className="text-xs text-ink-2">
+						카카오맵에서 사무실 우클릭 → “이곳의 좌표”로 확인. 위도=세로(y),
+						경도=가로(x).
+					</small>
+				</div>
+
+				<label className="flex flex-col gap-1.5">
+					<span className="text-[13px] font-bold text-ink">
+						검색 반경 (m, 100~20000)
+					</span>
+					<input
+						className={fieldCls}
+						style={{ width: 120 }}
+						placeholder="1000"
+						value={lunchRadius}
+						onChange={(e) => setLunchRadius(e.target.value)}
+					/>
+				</label>
 
 				<div className="mt-1 flex items-center gap-3">
 					<button type="button" className="btn btn-primary" onClick={save}>

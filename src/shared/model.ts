@@ -72,6 +72,10 @@ export type Config = {
 	jiraClientSecret: string; // Jira OAuth 2.0 (3LO) client secret
 	reportAgent: string; // 주간보고 다듬기에 쓸 에이전트 id (claude|codex|pi|"")
 	reportPrompt: string; // 주간보고 커스텀 프롬프트 override (비면 내장 기본값)
+	kakaoRestKey: string; // 카카오 로컬 API REST 키 (점심 탭 맛집 검색)
+	lunchLat: string; // 사무실 위도(WGS84, 문자열) — 점심 검색 기준점
+	lunchLng: string; // 사무실 경도(WGS84, 문자열)
+	lunchRadius: string; // 점심 검색 반경(m), 기본 1000
 };
 
 // 기본값엔 회사/개인 정보 없음. env는 선택적 초기값(공개 배포 시 비움).
@@ -82,6 +86,10 @@ export const DEFAULT_CONFIG: Config = {
 	jiraClientSecret: env("JIRA_CLIENT_SECRET", ""),
 	reportAgent: "",
 	reportPrompt: "",
+	kakaoRestKey: "",
+	lunchLat: "",
+	lunchLng: "",
+	lunchRadius: "1000",
 };
 
 export function mergeConfig(stored?: Partial<Config> | null): Config {
@@ -95,6 +103,10 @@ export function mergeConfig(stored?: Partial<Config> | null): Config {
 		jiraClientSecret: str(s.jiraClientSecret, DEFAULT_CONFIG.jiraClientSecret),
 		reportAgent: str(s.reportAgent, DEFAULT_CONFIG.reportAgent),
 		reportPrompt: str(s.reportPrompt, DEFAULT_CONFIG.reportPrompt),
+		kakaoRestKey: str(s.kakaoRestKey, DEFAULT_CONFIG.kakaoRestKey),
+		lunchLat: str(s.lunchLat, DEFAULT_CONFIG.lunchLat),
+		lunchLng: str(s.lunchLng, DEFAULT_CONFIG.lunchLng),
+		lunchRadius: str(s.lunchRadius, DEFAULT_CONFIG.lunchRadius),
 	};
 }
 

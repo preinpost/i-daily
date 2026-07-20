@@ -38,6 +38,10 @@ export type Config = {
 	jiraClientSecret: string;
 	reportAgent: string;
 	reportPrompt: string;
+	kakaoRestKey: string;
+	lunchLat: string;
+	lunchLng: string;
+	lunchRadius: string;
 };
 
 export type Meta = { today: string | null; owner: string; jiraBase: string };
@@ -87,6 +91,9 @@ export type Api = {
 		scan: () => Promise<any>;
 		generate: (opts?: unknown) => Promise<any>;
 		defaultPrompt: () => Promise<string>;
+	};
+	lunch: {
+		search: (opts: unknown) => Promise<any>;
 	};
 	update: {
 		getVersion: () => Promise<string>;
