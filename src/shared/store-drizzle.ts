@@ -4,7 +4,7 @@
 // 설계 메모:
 //  - D1 은 트랜잭션 미지원 → 다중문장 원자쓰기는 db.batch([...]) 사용(writeDoc·writeShortcuts).
 //  - 순수 model.ts(docToRows/rowsToDoc/mergeConfig) 만 의존 → 도메인 로직 공유, 중복 없음.
-//  - Backend 인터페이스로 route() 에 주입 → 라우팅 로직은 저장소 구현 무관(테스트 대체 용이).
+//  - Backend 인터페이스로 journalRoutes 에 주입 → 라우팅 로직은 저장소 구현 무관(테스트 대체 용이).
 import { eq, and, gte, lte, like, asc, desc, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { BatchItem } from "drizzle-orm/batch";
@@ -628,7 +628,7 @@ export function d1Store(db: DB, user: string): Store {
 	};
 }
 
-// D1 + Drizzle → Backend. Workers 엔트리가 env.DB 로 이것을 만들어 route() 에 주입.
+// D1 + Drizzle → Backend. Workers 엔트리가 env.DB 로 이것을 만들어 buildApp 에 주입.
 export function d1Backend(db: DB, user: string): Backend {
 	return {
 		user,

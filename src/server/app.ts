@@ -1,12 +1,12 @@
 // server/app.ts — Hono 앱 (Cloudflare Workers).
-// shared/api.ts 의 route(method,path,body,backend) 에 Backend 를 주입받는다.
-// 도메인 라우트(jira/login/lunch/agent) 는 기존 IPC 채널을 대체.
+// 일지 CRUD 는 journalRoutes 를 app.route("/api", ...) 로 마운트; 도메인
+// 라우트(jira/lunch/agent/me)는 부모 app 에 직접 등록. 모두 Hono 네이티브 매칭.
 // 인증: 세션(sid 쿠키 → sessions D1) 기반. 미로그인 시 user=SETUP("setup").
 import { Hono, type Context } from "hono";
 import type { Backend } from "../shared/backend.ts";
 import { SETUP_USER } from "../shared/backend.ts";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { route } from "../shared/api.ts";
+import { journalRoutes } from "./journal.ts";
 import { searchLunch } from "./lunch.ts";
 import { generateReport, scanAgents, defaultPrompt } from "./agent.ts";
 import {
@@ -127,19 +127,11 @@ export function buildApp(backend: Backend, db: DB): Hono {
 		return c.json({ user: backend.user, isSetup: backend.user === SETUP_USER });
 	});
 
-	// ── 일지 CRUD catch-all ── 도메인 라우트 이후에 매칭되도록 마지막에 등록.
-	// /api/day, /api/days, /api/config, /api/tasks, /api/shortcuts, /api/spaces 등 → route.
-	app.all("/api/*", async (c) => {
-		const method = c.req.method;
-		const qi = c.req.url.indexOf("?");
-		const path = c.req.path + (qi >= 0 ? c.req.url.slice(qi) : "");
-		const body =
-			method === "GET" || method === "HEAD"
-				? undefined
-				: await c.req.json().catch(() => undefined);
-		const r = await route(method, path, body, backend);
-		return c.json(r.body, r.status as any);
-	});
+	// ── 일지 CRUD ── 도메인 라우트 이후에 마운트(겹치는 경로 없음: /config /days /day/* 등).
+	app.route("/api", journalRoutes(backend));
+
+	// 마운트된 sub-app 의 notFound 는 안 발동 → 최상위에서 JSON 404 보장.
+	app.notFound((c) => c.json({ error: "not found", path: c.req.path }, 404));
 
 	return app;
 }

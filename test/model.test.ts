@@ -11,7 +11,7 @@ import {
 	setConfig,
 } from "../src/shared/model.ts";
 
-// config 주입(jiraBase) — route()가 호출별로 _cfg를 리셋하므로 렌더 검증 전에 매번 설정.
+// config 주입(jiraBase) — 렌더러는 getConfig()를 읽으므로 렌더 검증 전에 매번 설정.
 const withCfg = () =>
 	setConfig({
 		jiraBase: "https://jira.test", // host만 — /browse/ 는 자동

@@ -59,7 +59,7 @@ export interface Store {
 
 // ───────────────────────── 설정 (config) — 회사/개인 값은 DB config에서 주입 ─────────────────────────
 // 하드코딩된 회사 정보 제거 → 최초 실행 시 설정 페이지에서 등록, DB(settings 테이블)에 저장.
-// route()가 요청마다 DB config를 읽어 setConfig()로 주입하고, 순수 렌더러들은 getConfig()를 읽는다.
+// journal 미들웨어가 요청마다 DB config를 읽어 setConfig()로 주입하고, 순수 렌더러들은 getConfig()를 읽는다.
 // renderer(브라우저)에도 공유되므로 process 가 없을 수 있다.
 const env = (k: string, d: string): string =>
 	(globalThis as { process?: { env?: Record<string, string | undefined> } })
