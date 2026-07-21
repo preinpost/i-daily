@@ -129,6 +129,15 @@ export const jiraAuth = sqliteTable("jira_auth", {
 	json: text("json").notNull().default("{}"),
 });
 
+// ai_auth — user별 BYOK LLM API 키(AES-256-GCM 암호문) 한 행.
+// config(settings)와 분리해 렌더러 유출 방지 — jira_auth 와 동일 패턴.
+// json = { v:1, keyEnc: "<base64(iv+ciphertext)>" }. 평문 키는 절대 저장하지 않는다.
+// 마스터키는 DB 가 아닌 wrangler secret(AI_ENC_KEY)에 둔다 → DB 유출만으론 복호 불가.
+export const aiAuth = sqliteTable("ai_auth", {
+	user: text("user").primaryKey(),
+	json: text("json").notNull().default("{}"),
+});
+
 // oauth_states — OAuth `state`(CSRF) 단기 저장. Workers 멀티인스턴스 대응(in-memory 대체).
 // payload=JSON{redirectUri,fromUser,createdAt}. TTL ~5분(조회 시 만료 판정后 삭제).
 export const oauthStates = sqliteTable("oauth_states", {

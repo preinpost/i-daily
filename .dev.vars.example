@@ -21,3 +21,8 @@ KAKAO_REST_KEY=
 # (선택) config 초기값 — 공개 배포 시 비움. user 가 설정 탭에서 덮어씀.
 # OWNER=
 # JIRA_BASE=
+# BYOK LLM API 키 암호화용 마스터키(AES-256-GCM) — 32바이트 base64.
+# 생성: openssl rand -base64 32
+# 운영 등록: wrangler secret put AI_ENC_KEY
+# 이 키로 ai_auth 테이블의 사용자 API 키를 암/복호한다. 교체 시 기존 저장 키는 재등록 필요.
+AI_ENC_KEY=

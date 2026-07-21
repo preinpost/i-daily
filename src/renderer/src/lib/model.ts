@@ -334,7 +334,9 @@ export function normCfg(c?: Partial<Config> | null): Config {
 	return {
 		owner: s.owner || "",
 		jiraBase: s.jiraBase || "",
-		reportAgent: s.reportAgent || "",
+		reportProvider: s.reportProvider || "",
+		reportModel: s.reportModel || "",
+		reportBaseUrl: s.reportBaseUrl || "",
 		reportPrompt: s.reportPrompt || "",
 		lunchLat: s.lunchLat || "",
 		lunchLng: s.lunchLng || "",

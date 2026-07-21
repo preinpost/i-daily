@@ -68,7 +68,9 @@ const env = (k: string, d: string): string =>
 export type Config = {
 	owner: string; // 작성자 이름
 	jiraBase: string; // Jira 브라우즈 베이스 (예: https://your-org.atlassian.net/browse/)
-	reportAgent: string; // 주간보고 다듬기에 쓸 에이전트 id (claude|codex|pi|"")
+	reportProvider: string; // 주간보고 다듬기 LLM provider ("" | anthropic | openai | custom). BYOK.
+	reportModel: string; // provider 모델 id (예: claude-haiku-4-5). 비면 provider 기본값.
+	reportBaseUrl: string; // custom provider 의 OpenAI 호환 base URL(https). 다른 provider 는 비움.
 	reportPrompt: string; // 주간보고 커스텀 프롬프트 override (비면 내장 기본값)
 	lunchLat: string; // 사무실 위도(WGS84, 문자열) — 점심 검색 기준점
 	lunchLng: string; // 사무실 경도(WGS84, 문자열)
@@ -82,7 +84,9 @@ export type Config = {
 export const DEFAULT_CONFIG: Config = {
 	owner: env("OWNER", ""),
 	jiraBase: env("JIRA_BASE", ""),
-	reportAgent: "",
+	reportProvider: "",
+	reportModel: "",
+	reportBaseUrl: "",
 	reportPrompt: "",
 	lunchLat: "",
 	lunchLng: "",
@@ -96,7 +100,9 @@ export function mergeConfig(stored?: Partial<Config> | null): Config {
 	return {
 		owner: str(s.owner, DEFAULT_CONFIG.owner),
 		jiraBase: str(s.jiraBase, DEFAULT_CONFIG.jiraBase),
-		reportAgent: str(s.reportAgent, DEFAULT_CONFIG.reportAgent),
+		reportProvider: str(s.reportProvider, DEFAULT_CONFIG.reportProvider),
+		reportModel: str(s.reportModel, DEFAULT_CONFIG.reportModel),
+		reportBaseUrl: str(s.reportBaseUrl, DEFAULT_CONFIG.reportBaseUrl),
 		reportPrompt: str(s.reportPrompt, DEFAULT_CONFIG.reportPrompt),
 		lunchLat: str(s.lunchLat, DEFAULT_CONFIG.lunchLat),
 		lunchLng: str(s.lunchLng, DEFAULT_CONFIG.lunchLng),

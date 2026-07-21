@@ -9,9 +9,14 @@ import type { Hono } from "hono";
 const U = "u1";
 
 // 스키마 적용된 D1 → d1Backend → Hono 앱.
+// 테스트용 최소 Env(AI_ENC_KEY 는 32바이트 base64). 나머지 바인딩은 미사용.
+const TEST_ENV = {
+	AI_ENC_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+} as unknown as Env;
+
 async function makeApp(user = U): Promise<Hono> {
 	const db = await freshDb();
-	return buildApp(d1Backend(db, user), db);
+	return buildApp(d1Backend(db, user), db, TEST_ENV);
 }
 
 // app.request() 로 호출하고 {status, body} 로 정규화(JSON/텍스트 자동 판별).
@@ -160,4 +165,125 @@ test("과거 일지 스페이스 라벨 학습 (/api/spaces · /api/days)", asyn
 
 	const days = await call(app, "GET", "/api/days");
 	expect(days.body.spaces).toEqual(["Backend", "qa", "infra"]);
+});
+
+test("AI BYOK: status 초기 → 키 저장(암호문만) → status hasKey → 삭제", async () => {
+	const app = await makeApp();
+
+	// 초기: 키 없음, provider 목록·encReady 노출.
+	const s0 = await call(app, "GET", "/api/ai/status");
+	expect(s0.status).toBe(200);
+	expect(s0.body.hasKey).toBe(false);
+	expect(s0.body.encReady).toBe(true);
+	expect(Array.isArray(s0.body.providers)).toBe(true);
+	expect(s0.body.providers.some((p: any) => p.id === "anthropic")).toBe(true);
+
+	// provider·apiKey 누락 → 400.
+	const bad = await call(app, "PUT", "/api/ai/key", { provider: "anthropic" });
+	expect(bad.status).toBe(400);
+
+	// 미지원 provider → 400.
+	const bad2 = await call(app, "PUT", "/api/ai/key", {
+		provider: "nope",
+		apiKey: "x",
+	});
+	expect(bad2.status).toBe(400);
+
+	// 정상 저장 → config 에 provider/model 반영, 응답에 평문 키 없음.
+	const put = await call(app, "PUT", "/api/ai/key", {
+		provider: "anthropic",
+		model: "claude-haiku-4-5",
+		apiKey: "sk-ant-secret-XYZ",
+	});
+	expect(put.status).toBe(200);
+	expect(put.body.ok).toBe(true);
+	expect(JSON.stringify(put.body).includes("sk-ant-secret-XYZ")).toBe(false);
+
+	// status: hasKey=true, provider/model 노출(키 평문은 없음).
+	const s1 = await call(app, "GET", "/api/ai/status");
+	expect(s1.body.hasKey).toBe(true);
+	expect(s1.body.provider).toBe("anthropic");
+	expect(s1.body.model).toBe("claude-haiku-4-5");
+	expect(JSON.stringify(s1.body).includes("sk-ant-secret-XYZ")).toBe(false);
+
+	// config 로도 평문 키가 새지 않음.
+	const cfg = await call(app, "GET", "/api/config");
+	expect(JSON.stringify(cfg.body).includes("sk-ant-secret-XYZ")).toBe(false);
+	expect(cfg.body.config.reportProvider).toBe("anthropic");
+
+	// 삭제 → hasKey=false, config provider 비움.
+	const del = await call(app, "DELETE", "/api/ai/key");
+	expect(del.status).toBe(200);
+	const s2 = await call(app, "GET", "/api/ai/status");
+	expect(s2.body.hasKey).toBe(false);
+	expect(s2.body.provider).toBe("");
+});
+
+test("config 부분 갱신: 다른 필드 보존(AI 설정 ↔ 일반 설정 서로 안 지움)", async () => {
+	const app = await makeApp();
+
+	// 1) owner/jiraBase 저장.
+	await call(app, "PUT", "/api/config", {
+		owner: "홍길동",
+		jiraBase: "https://jira.test",
+	});
+
+	// 2) AI 키 저장(provider/model) → owner/jiraBase 가 날아가면 안 됨.
+	await call(app, "PUT", "/api/ai/key", {
+		provider: "anthropic",
+		model: "claude-haiku-4-5",
+		apiKey: "sk-ant-xyz",
+	});
+	const c1 = await call(app, "GET", "/api/config");
+	expect(c1.body.config.owner).toBe("홍길동");
+	expect(c1.body.config.reportProvider).toBe("anthropic");
+	expect(c1.body.config.reportModel).toBe("claude-haiku-4-5");
+
+	// 3) 일반 설정 저장(lunch 만 전송) → AI provider/model 이 초기화되면 안 됨.
+	await call(app, "PUT", "/api/config", {
+		owner: "홍길동",
+		jiraBase: "https://jira.test",
+		lunchRadius: "1500",
+	});
+	const c2 = await call(app, "GET", "/api/config");
+	expect(c2.body.config.lunchRadius).toBe("1500");
+	expect(c2.body.config.reportProvider).toBe("anthropic");
+	expect(c2.body.config.reportModel).toBe("claude-haiku-4-5");
+});
+
+test("AI BYOK: custom endpoint 검증(baseUrl 필수·https) — 네트워크 없이", async () => {
+	const app = await makeApp();
+
+	// providers 에 custom 존재 + custom 플래그.
+	const s = await call(app, "GET", "/api/ai/status");
+	const custom = s.body.providers.find((p: any) => p.id === "custom");
+	expect(custom?.custom).toBe(true);
+
+	// custom 인데 baseUrl 없음 → 400.
+	const noBase = await call(app, "PUT", "/api/ai/key", {
+		provider: "custom",
+		apiKey: "k",
+	});
+	expect(noBase.status).toBe(400);
+
+	// custom + http(비https) → 400.
+	const httpBase = await call(app, "PUT", "/api/ai/key", {
+		provider: "custom",
+		apiKey: "k",
+		baseUrl: "http://insecure.example/v1",
+	});
+	expect(httpBase.status).toBe(400);
+
+	// /api/ai/test: 키 누락 → 400 (네트워크 미접촉).
+	const testNoKey = await call(app, "POST", "/api/ai/test", {
+		provider: "openai",
+	});
+	expect(testNoKey.status).toBe(400);
+
+	// /api/ai/test: custom + baseUrl 없음 → 400.
+	const testNoBase = await call(app, "POST", "/api/ai/test", {
+		provider: "custom",
+		apiKey: "k",
+	});
+	expect(testNoBase.status).toBe(400);
 });

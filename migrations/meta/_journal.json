@@ -15,6 +15,13 @@
       "when": 1784605638852,
       "tag": "0001_confused_lucky_pierre",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784640582216,
+      "tag": "0002_medical_steve_rogers",
+      "breakpoints": true
     }
   ]
 }

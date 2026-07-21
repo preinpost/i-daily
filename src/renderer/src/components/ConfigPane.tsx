@@ -24,14 +24,19 @@ export function ConfigPane({
 	onSaved: (cfg: Config, configured: boolean) => void;
 }) {
 	const toast = useToast();
-	const [reportAgent, setReportAgent] = useState(config.reportAgent || "");
 	const [lunchLat, setLunchLat] = useState(config.lunchLat || "");
 	const [lunchLng, setLunchLng] = useState(config.lunchLng || "");
 	const [lunchRadius, setLunchRadius] = useState(config.lunchRadius || "1000");
-	const [agents, setAgents] = useState<
-		{ id: string; label: string; version: string; path: string }[] | null
-	>(null);
-	const [scanning, setScanning] = useState(false);
+	// BYOK AI — provider/model 은 config, 키는 서버 암호문으로만 저장(평문 미노출).
+	type AiStatus = Awaited<ReturnType<NonNullable<typeof window.api.ai>["status"]>>;
+	const [ai, setAi] = useState<AiStatus | null>(null);
+	const [aiProvider, setAiProvider] = useState(config.reportProvider || "");
+	const [aiModel, setAiModel] = useState(config.reportModel || "");
+	const [aiBaseUrl, setAiBaseUrl] = useState(config.reportBaseUrl || "");
+	const [aiKey, setAiKey] = useState("");
+	const [aiModels, setAiModels] = useState<string[]>([]); // Test 로 불러온 모델 후보
+	const [aiBusy, setAiBusy] = useState(false);
+	const [aiTesting, setAiTesting] = useState(false);
 	const [savedAt, setSavedAt] = useState("");
 	const [js, setJs] = useState<JiraStatus>(null);
 	const [me, setMe] = useState<{ user: string; isSetup: boolean } | null>(null);
@@ -39,22 +44,104 @@ export function ConfigPane({
 
 	// config 가 갱신되면(저장 후) 폼 재동기화
 	useEffect(() => {
-		setReportAgent(config.reportAgent || "");
+		setAiProvider(config.reportProvider || "");
+		setAiModel(config.reportModel || "");
+		setAiBaseUrl(config.reportBaseUrl || "");
 		setLunchLat(config.lunchLat || "");
 		setLunchLng(config.lunchLng || "");
 		setLunchRadius(config.lunchRadius || "1000");
 	}, [config]);
 
-	async function scanAgents() {
-		if (!window.api?.agent) return;
-		setScanning(true);
+	async function refreshAi() {
+		if (!window.api?.ai) return;
 		try {
-			const r = await window.api.agent.scan();
-			setAgents(r?.agents || []);
+			const r = await window.api.ai.status();
+			setAi(r);
+			setAiProvider(r.provider || "");
+			setAiModel(r.model || "");
+			setAiBaseUrl(r.baseUrl || "");
 		} catch {
-			setAgents([]);
+			setAi(null);
+		}
+	}
+
+	const aiProviderDef = (ai?.providers || []).find((p) => p.id === aiProvider);
+	const aiNeedsBase = !!aiProviderDef?.custom;
+	// 불러온 모델 목록 + (목록에 없는) 현재 저장 모델을 앞에 보장.
+	const aiModelOptions =
+		aiModel && !aiModels.includes(aiModel)
+			? [aiModel, ...aiModels]
+			: aiModels;
+
+	async function testAi() {
+		if (!window.api?.ai || aiTesting) return;
+		if (!aiProvider) return toast("provider 를 선택하세요");
+		if (!aiKey.trim()) return toast("API 키를 입력하세요");
+		if (aiNeedsBase && !aiBaseUrl.trim())
+			return toast("custom endpoint URL 을 입력하세요");
+		setAiTesting(true);
+		try {
+			const r = await window.api.ai.test({
+				provider: aiProvider,
+				apiKey: aiKey.trim(),
+				baseUrl: aiBaseUrl.trim(),
+			});
+			if (r?.ok) {
+				setAiModels(r.models || []);
+				// 모델 미선택이면 첫 후보/기본값으로 채움.
+				if (!aiModel && r.models?.length)
+					setAiModel(aiProviderDef?.defaultModel || r.models[0]);
+				toast(`✅ 연결 성공 — 모델 ${r.models?.length ?? 0}개`);
+			} else {
+				setAiModels([]);
+				toast("❌ 연결 실패: " + (r?.error || "알 수 없음"));
+			}
+		} catch {
+			toast("❌ 연결 테스트 실패");
 		} finally {
-			setScanning(false);
+			setAiTesting(false);
+		}
+	}
+
+	async function saveAiKey() {
+		if (!window.api?.ai || aiBusy) return;
+		if (!aiProvider) return toast("provider 를 선택하세요");
+		if (!aiKey.trim()) return toast("API 키를 입력하세요");
+		if (aiNeedsBase && !aiBaseUrl.trim())
+			return toast("custom endpoint URL 을 입력하세요");
+		setAiBusy(true);
+		try {
+			const model = aiModel || aiProviderDef?.defaultModel || "";
+			const r = await window.api.ai.saveKey({
+				provider: aiProvider,
+				model,
+				apiKey: aiKey.trim(),
+				baseUrl: aiBaseUrl.trim(),
+			});
+			if (r?.ok) {
+				setAiKey("");
+				toast("AI 키 저장됨 (암호화 보관)");
+				await refreshAi();
+			} else toast("저장 실패: " + (r?.error || "알 수 없음"));
+		} catch {
+			toast("AI 키 저장 실패");
+		} finally {
+			setAiBusy(false);
+		}
+	}
+
+	async function clearAiKey() {
+		if (!window.api?.ai || aiBusy) return;
+		setAiBusy(true);
+		try {
+			await window.api.ai.clearKey();
+			setAiKey("");
+			toast("AI 키 삭제됨 — 결정적 집계만 사용");
+			await refreshAi();
+		} catch {
+			toast("삭제 실패");
+		} finally {
+			setAiBusy(false);
 		}
 	}
 
@@ -74,7 +161,7 @@ export function ConfigPane({
 	useEffect(() => {
 		if (active) {
 			refreshJira();
-			scanAgents();
+			refreshAi();
 		}
 	}, [active]);
 
@@ -83,7 +170,11 @@ export function ConfigPane({
 			// owner·jiraBase 는 Jira 로그인이 자동 채움 — 기존 값 보존(설정 입력칸 없음).
 			owner: config.owner,
 			jiraBase: config.jiraBase,
-			reportAgent: reportAgent.trim(),
+			// AI provider/model/baseUrl 은 비밀이 아니므로 일반 설정에도 포함(드롭다운 선택 유지).
+			// API 키만 별도 암호화 저장(PUT /api/ai/key). 키 없이 모델만 바꿔도 여기서 저장됨.
+			reportProvider: aiProvider,
+			reportModel: aiModel.trim(),
+			reportBaseUrl: aiNeedsBase ? aiBaseUrl.trim() : "",
 			lunchLat: lunchLat.trim(),
 			lunchLng: lunchLng.trim(),
 			lunchRadius: lunchRadius.trim() || "1000",
@@ -182,57 +273,139 @@ export function ConfigPane({
 				</div>
 
 				<h3 className="mt-4 border-t border-line pt-4 text-[15px] font-extrabold text-ink">
-					🤖 주간업무보고 에이전트
+					🤖 주간업무보고 AI (BYOK)
 				</h3>
 				<p className="tint-accent m-0 rounded-[10px] px-3.5 py-2.5 text-xs text-ink">
-					주간보고의 <b>티켓키·진척%·마감</b>은 앱이 확정합니다. 에이전트는{" "}
-					<b>서술만</b> 자연스럽게 다듬어요. 선택하지 않으면 결정적 집계
-					텍스트만 생성합니다(에이전트 불필요).
+					주간보고의 <b>티켓키·진척%·마감</b>은 앱이 확정합니다. AI 는{" "}
+					<b>서술만</b> 자연스럽게 다듬어요. 본인의 <b>API 키</b>를 등록하면
+					사용하고, 없으면 결정적 집계 텍스트만 생성합니다. 키는{" "}
+					<b>암호화(AES-256-GCM)</b>되어 서버에만 보관되며 화면에 다시 표시되지
+					않습니다.
 				</p>
+				{ai && !ai.encReady && (
+					<p className="m-0 rounded-[10px] bg-panel px-3.5 py-2.5 text-xs text-ink-2">
+						⚠️ 서버에 <code>AI_ENC_KEY</code> secret 이 없어 키 저장이 불가합니다.
+						배포자가 <code>wrangler secret put AI_ENC_KEY</code> 로 등록하세요.
+					</p>
+				)}
 				<div className="flex flex-col gap-2">
-					<div className="flex items-center gap-3">
-						<button
-							type="button"
-							className="btn btn-ghost"
-							onClick={scanAgents}
-							disabled={scanning}
-						>
-							{scanning ? "스캔 중…" : "🔍 에이전트 스캔"}
-						</button>
+					<div className="flex items-center gap-2">
 						<span className="text-[13px] text-ink-2">
-							{agents == null
-								? "—"
-								: agents.length
-									? `${agents.length}개 발견`
-									: "발견된 에이전트 없음"}
+							{ai?.hasKey
+								? `✅ 키 등록됨 · ${ai.provider}${ai.model ? "/" + ai.model : ""}`
+								: "키 미등록 — 결정적 집계만 사용"}
 						</span>
+						{ai?.hasKey && (
+							<button
+								type="button"
+								className="btn btn-ghost"
+								onClick={clearAiKey}
+								disabled={aiBusy}
+							>
+								🗑️ 키 삭제
+							</button>
+						)}
 					</div>
-					<label className="flex cursor-pointer items-center gap-2 text-[13px] text-ink">
+					<select
+						className={fieldCls}
+						style={{ maxWidth: 320 }}
+						value={aiProvider}
+						onChange={(e) => {
+							const pid = e.target.value;
+							setAiProvider(pid);
+							const def = (ai?.providers || []).find((p) => p.id === pid);
+							setAiModel(def?.defaultModel || "");
+							setAiModels([]); // provider 바뀌면 모델 후보 초기화
+						}}
+					>
+						<option value="">provider 선택…</option>
+						{(ai?.providers || []).map((p) => (
+							<option key={p.id} value={p.id}>
+								{p.label}
+							</option>
+						))}
+					</select>
+					{aiNeedsBase && (
 						<input
-							type="radio"
-							name="reportAgent"
-							checked={!reportAgent}
-							onChange={() => setReportAgent("")}
+							className={fieldCls}
+							style={{ width: 320 }}
+							placeholder="https://예: openrouter.ai/api/v1 (OpenAI 호환 base URL)"
+							value={aiBaseUrl}
+							onChange={(e) => setAiBaseUrl(e.target.value)}
 						/>
-						사용 안 함 (결정적 집계만)
-					</label>
-					{(agents || []).map((a) => (
-						<label
-							key={a.id}
-							className="flex cursor-pointer items-center gap-2 text-[13px] text-ink"
-						>
-							<input
-								type="radio"
-								name="reportAgent"
-								checked={reportAgent === a.id}
-								onChange={() => setReportAgent(a.id)}
-							/>
-							{a.label}
-							{a.version && (
-								<span className="text-xs text-ink-2">· {a.version}</span>
-							)}
-						</label>
-					))}
+					)}
+					{aiProvider && (
+						<>
+							<div className="flex flex-wrap items-center gap-2">
+								<input
+									className={fieldCls}
+									style={{ width: 280 }}
+									type="password"
+									autoComplete="off"
+									placeholder={
+										ai?.hasKey
+											? "새 키로 교체하려면 입력…"
+											: aiProviderDef?.keyHint || "API 키"
+									}
+									value={aiKey}
+									onChange={(e) => setAiKey(e.target.value)}
+								/>
+								<button
+									type="button"
+									className="btn btn-ghost"
+									onClick={testAi}
+									disabled={aiTesting || !aiKey.trim()}
+									title="키·endpoint 로 연결 확인 후 모델 목록을 불러옵니다"
+								>
+									{aiTesting ? "테스트 중…" : "🧪 테스트 & 모델 불러오기"}
+								</button>
+							</div>
+							<div className="flex flex-wrap items-center gap-2">
+								{aiModels.length > 0 && (
+									<select
+										className={fieldCls}
+										style={{ maxWidth: 320 }}
+										value={aiModelOptions.includes(aiModel) ? aiModel : ""}
+										onChange={(e) => setAiModel(e.target.value)}
+									>
+										<option value="">모델 선택… ({aiModels.length}개)</option>
+										{aiModelOptions.map((m) => (
+											<option key={m} value={m}>
+												{m}
+											</option>
+										))}
+									</select>
+								)}
+								{(aiModels.length === 0 || aiNeedsBase) && (
+									<input
+										className={fieldCls}
+										style={{ width: 280 }}
+										placeholder={
+											aiModels.length
+												? "또는 모델명 직접 입력"
+												: aiProviderDef?.defaultModel ||
+													"모델명 입력(테스트로 불러오기)"
+										}
+										value={aiModel}
+										onChange={(e) => setAiModel(e.target.value)}
+									/>
+								)}
+								<button
+									type="button"
+									className="btn btn-primary"
+									onClick={saveAiKey}
+									disabled={aiBusy || !ai?.encReady}
+								>
+									{aiBusy ? "저장 중…" : ai?.hasKey ? "키 교체" : "키 저장"}
+								</button>
+								{aiModels.length > 0 && (
+									<span className="text-xs text-ink-2">
+										{aiModels.length}개 모델 불러옴
+									</span>
+								)}
+							</div>
+						</>
+					)}
 				</div>
 
 				<h3 className="mt-4 border-t border-line pt-4 text-[15px] font-extrabold text-ink">

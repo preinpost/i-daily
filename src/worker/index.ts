@@ -21,7 +21,7 @@ export default {
 			const db = drizzle(env.DB);
 			// 요청 쿠키에서 sid → sessions 조회 → user. 없으면 SETUP_USER.
 			const user = await resolveUser(db, request);
-			const app = buildApp(d1Backend(db, user), db);
+			const app = buildApp(d1Backend(db, user), db, env);
 			return app.fetch(request);
 		}
 		return env.ASSETS.fetch(request);

@@ -42,9 +42,36 @@ export type Api = {
 	};
 	me: () => Promise<{ user: string; isSetup: boolean } | null>;
 	agent: {
-		scan: () => Promise<any>;
 		generate: (opts?: unknown) => Promise<any>;
 		defaultPrompt: () => Promise<string>;
+	};
+	ai: {
+		status: () => Promise<{
+			hasKey: boolean;
+			provider: string;
+			model: string;
+			baseUrl: string;
+			encReady: boolean;
+			providers: {
+				id: string;
+				label: string;
+				defaultModel: string;
+				keyHint: string;
+				custom: boolean;
+			}[];
+		}>;
+		test: (v: {
+			provider: string;
+			apiKey: string;
+			baseUrl?: string;
+		}) => Promise<{ ok: boolean; models: string[]; error?: string }>;
+		saveKey: (v: {
+			provider: string;
+			model: string;
+			apiKey: string;
+			baseUrl?: string;
+		}) => Promise<any>;
+		clearKey: () => Promise<any>;
 	};
 	lunch: {
 		search: (opts: unknown) => Promise<any>;

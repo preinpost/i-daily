@@ -66,7 +66,7 @@ export function WeeklyReportPane({
   const [res, setRes] = useState<Result>(null);
   const [seeded, setSeeded] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
-  const hasAgent = !!(config.reportAgent || "").trim();
+  const hasAgent = !!(config.reportProvider || "").trim();
   const [showDiff, setShowDiff] = useState(false);
   // 에이전트가 실제로 집계 원문을 바꿨을 때만 diff 제공.
   const canDiff = !!(res?.usedAgent && res.deterministic && res.deterministic !== res.text);

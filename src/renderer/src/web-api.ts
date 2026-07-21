@@ -34,6 +34,12 @@ async function get(path: string): Promise<any> {
 async function post(path: string, body?: unknown): Promise<any> {
 	return (await request("POST", path, body)).body;
 }
+async function put(path: string, body?: unknown): Promise<any> {
+	return (await request("PUT", path, body)).body;
+}
+async function del(path: string): Promise<any> {
+	return (await request("DELETE", path)).body;
+}
 
 // Atlassian 인가 URL 만 신뢰(window.open open-redirect 방지).
 // 정규식 대신 URL 호스트 비교 — 검증 의도가 정적 분석에도 드러난다.
@@ -68,9 +74,14 @@ export const webApi: Api = {
 	},
 	me: () => get("/api/me"),
 	agent: {
-		scan: () => get("/api/agent/scan"),
 		generate: (opts?: unknown) => post("/api/agent/generate", opts),
 		defaultPrompt: () => get("/api/agent/default-prompt"),
+	},
+	ai: {
+		status: () => get("/api/ai/status"),
+		test: (v: unknown) => post("/api/ai/test", v),
+		saveKey: (v: unknown) => put("/api/ai/key", v),
+		clearKey: () => del("/api/ai/key"),
 	},
 	lunch: {
 		search: (opts: unknown) => post("/api/lunch/search", opts),

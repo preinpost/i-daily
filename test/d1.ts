@@ -14,7 +14,7 @@ const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), "..", "migratio
 // 마이그레이션이 만든 실제 테이블(뷰 task_rows·drizzle 내부표 제외). 매 테스트 초기화 대상.
 const TABLES = [
 	"days", "sections", "blocks", "spaces", "tasks", "list_items",
-	"shortcuts", "settings", "jira_auth", "oauth_states", "sessions",
+	"shortcuts", "settings", "jira_auth", "ai_auth", "oauth_states", "sessions",
 ];
 
 let mf: Miniflare | null = null;
