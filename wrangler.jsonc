@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "i-daily",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-07-01",
+  // nodejs_compat: shared/model·report 등에서 node 내장(예: Buffer/crypto) 사용 대비.
+  "compatibility_flags": ["nodejs_compat"],
+
+  // D1: better-sqlite3 대체. database_id 는 `wrangler d1 create i-daily` 후 채운다.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "i-daily",
+      "database_id": "7452d3ea-50c0-41ab-a0ae-cb02dfe09c55",
+      "migrations_dir": "./migrations"
+    }
+  ],
+
+  // 빌드된 React SPA(정적) 서빙. electron-vite 대신 웹 전용 vite 빌드 산출물.
+  "assets": {
+    "directory": "./dist/web",
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS"
+  },
+
+  "observability": { "enabled": true }
+}

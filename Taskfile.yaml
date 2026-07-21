@@ -13,21 +13,25 @@ tasks:
 
   # ── 개발 ──────────────────────────────────────────────────
   setup:
-    desc: 의존성 설치 (+ better-sqlite3 Electron ABI 리빌드)
+    desc: 의존성 설치
     cmds:
       - npm install
 
   dev:
-    desc: 개발 서버 (electron-vite · 창 + HMR)
+    desc: 개발 서버 (API=wrangler + UI=Vite HMR, 동시 실행)
     aliases: [d]
     cmds:
       - npm run dev
 
-  start:
-    desc: 빌드 산출물 미리보기 (electron-vite preview)
-    deps: [build]
+  dev:api:
+    desc: API 만 (wrangler dev · D1 로컬)
     cmds:
-      - npm run start
+      - npm run dev:api
+
+  dev:ui:
+    desc: UI 만 (Vite · /api 를 dev:api 로 프록시)
+    cmds:
+      - npm run dev:ui
 
   # ── 검사 ──────────────────────────────────────────────────
   typecheck:
@@ -37,7 +41,7 @@ tasks:
       - npm run typecheck
 
   test:
-    desc: 단위 테스트 (model · store · api)
+    desc: 단위 테스트 (model · store · api — better-sqlite3 in-memory)
     aliases: [t]
     cmds:
       - npm test
@@ -50,36 +54,47 @@ tasks:
 
   # ── 빌드 / 배포 ───────────────────────────────────────────
   build:
-    desc: out/ 으로 번들 (main · preload · renderer)
+    desc: 웹 SPA 빌드 → dist/web
     aliases: [b]
     cmds:
       - npm run build
 
-  dist:
-    desc: 현재 OS 배포판 빌드
+  deploy:
+    desc: Cloudflare Workers 배포 (빌드 포함)
     cmds:
-      - npm run dist
+      - npm run deploy
 
-  dist:mac:
-    desc: macOS 배포판 (dmg · zip)
+  types:worker:
+    desc: wrangler types (Workers 바인딩 타입 재생성)
     cmds:
-      - npm run dist:mac
+      - npm run types:worker
 
-  dist:win:
-    desc: Windows 배포판 (nsis · portable)
+  # ── DB (D1) ───────────────────────────────────────────────
+  db:generate:
+    desc: Drizzle 스키마 → migrations/*.sql 생성
     cmds:
-      - npm run dist:win
+      - npm run db:generate
 
-  dist:linux:
-    desc: Linux 배포판 (AppImage · deb)
+  db:migrate:local:
+    desc: 로컬 D1 에 마이그레이션 적용
     cmds:
-      - npm run dist:linux
+      - npm run db:migrate:local
+
+  db:migrate:remote:
+    desc: 원격 D1 에 마이그레이션 적용
+    cmds:
+      - npm run db:migrate:remote
+
+  db:create:
+    desc: 원격 D1 데이터베이스 생성 (최초 1회)
+    cmds:
+      - npm run db:create
 
   # ── 유틸 ──────────────────────────────────────────────────
   clean:
-    desc: 빌드 산출물 삭제 (out · release · dist)
+    desc: 빌드 산출물 삭제 (dist · .wrangler)
     cmds:
-      - rm -rf out release dist
+      - rm -rf dist .wrangler
 
   reinstall:
     desc: node_modules 지우고 재설치

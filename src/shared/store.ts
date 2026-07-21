@@ -13,6 +13,7 @@ import {
 	type Shortcut,
 	type Config,
 } from "./model.ts";
+import type { Backend } from "./backend.ts";
 
 type DB = Database.Database;
 
@@ -287,6 +288,30 @@ function writeShortcuts(db: DB, user: string, items: Shortcut[]): void {
 			ins.run(user, i, it.name || "", it.url || ""),
 		);
 	})();
+}
+
+// [방향 B] Backend seam — 기존 동기 함수들을 async Backend 로 감싸는 어댑터.
+// route()는 이 인터페이스만 의존하므로, Workers 측은 d1Backend 로 동일 routeWith 를 부른다.
+export function sqliteBackend(db: DB, user: string): Backend {
+	return {
+		user,
+		store: sqliteStore(db, user),
+		async queryTasks(f) {
+			return queryTasks(db, user, f);
+		},
+		async listSpaceLabels() {
+			return listSpaceLabels(db, user);
+		},
+		async readConfig() {
+			return readConfig(db, user);
+		},
+		async writeConfig(cfg) {
+			return writeConfig(db, user, cfg);
+		},
+		async hasConfig() {
+			return hasConfig(db, user);
+		},
+	};
 }
 
 // 진실. user별. 인터페이스는 async(과거 D1 대비 흔적) — 코어는 better-sqlite3 sync.

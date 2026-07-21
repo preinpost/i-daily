@@ -2,9 +2,12 @@
 node_modules/
 *.log
 
-# electron-vite 빌드 산출물 · electron-builder 패키지
-out/
-release/
+# 웹(Workers) 빌드 산출물 — Vite 가 dist/web 에 SPA 생성.
+dist/
+
+# Cloudflare/Wrangler 로컬 상태(D1 시뮬·캐시) 및 wrangler types 생성본
+.wrangler/
+worker-configuration.d.ts
 
 # sqlite db (진실 데이터 — 코드 아님)
 *.db

@@ -1,10 +1,10 @@
 # i-daily
 
-데일리 업무일지 데스크톱 앱 (Electron · Windows / macOS / Linux).
+데일리 업무일지 웹앱 (Cloudflare Workers · D1 · Hono · Drizzle).
 
-- 데이터의 진실은 sqlite에 있다 — 유저별 정규화 테이블(`days` / `sections` / `blocks` / `spaces` / `tasks` / `list_items` / `shortcuts`).
-- 렌더러(브라우저 UI)는 `window.api.request(method, path, body)`로 요청하고, IPC를 거쳐 메인 프로세스의 `route()` → `better-sqlite3`로 이어진다.
-- 과거 Bun 웹서버 / Cloudflare 경로는 데스크톱 전용으로 전환하며 폐기했다. 전송(transport)만 HTTP → IPC로 바뀌었고 UI 로직은 그대로다.
+- 데이터의 진실은 D1(SQLite)에 있다 — 유저별 정규화 테이블(`days` / `sections` / `blocks` / `spaces` / `tasks` / `list_items` / `shortcuts`).
+- 브라우저 UI(React)는 `window.api.request(method, path, body)`로 요청하고, Hono 서버(Workers)의 `routeWith()` → Drizzle/D1로 이어진다.
+- Electron 데스크톱 앱에서 웹앱으로 전환했다(이전 아키텍처는 git history 참고). 도메인 로직(model/store/report)과 UI 컴포넌트는 무손상 재사용.
 
 ## 주요 기능
 
@@ -34,80 +34,64 @@
 ## 개발 실행
 
 ```sh
-npm install    # 의존성 설치 + better-sqlite3를 Electron ABI로 리빌드(postinstall)
-npm run dev    # electron-vite dev — 창 + HMR
+npm install       # 의존성 설치
+npm run dev       # API(wrangler:8787) + UI(Vite:5173) 동시 실행 → http://localhost:5173
+npm run db:migrate:local   # 로컬 D1 스키마 적용(최초 1회)
 ```
 
-## 빌드 / 배포판
+`npm run dev` 후 **브라우저는 `http://localhost:5173`** 을 연다(UI + HMR). `/api/*`는 자동으로 8787(wrangler·D1)로 프록시된다. 8787은 백엔드 API 로그용이라 브라우저로 열지 않는다.
+
+## 빌드 / 배포
 
 ```sh
-npm run build        # out/ 로 번들(main · preload · renderer)
-npm run dist:mac     # release/ 에 dmg · zip
-npm run dist:win     # release/ 에 nsis 설치본 · portable
-npm run dist:linux   # release/ 에 AppImage · deb
+npm run build      # Vite → dist/web (SPA)
+npm run deploy     # Cloudflare Workers 배포(빌드 포함)
 ```
 
-- 크로스 빌드는 각 OS가 필요하다(mac 산출물은 macOS에서). 3-OS 산출물은 GitHub Actions 매트릭스(macos / windows / ubuntu)로 자동화하는 것을 권장한다.
-- 아이콘은 `build/icon.icns`(mac) · `build/icon.ico`(win) · `build/icon.png`(linux, 512px)를 두면 자동 사용하고, 없으면 기본 아이콘을 쓴다.
-
-### 자동 업데이트 (GitHub Releases)
-
-패키징된 앱은 시작 시 그리고 4시간마다 GitHub Release를 확인해, 새 버전이 있으면 상단 배너로 안내한다. 헤더의 `vX.Y.Z` 뱃지를 클릭하면 수동으로 검사하고, **다운로드 → 재시작**으로 설치한다.
-
-| OS | 업데이트 대상 산출물 | 비고 |
-| --- | --- | --- |
-| Windows | NSIS 설치본 | portable은 비대상 |
-| macOS | zip | 코드 서명·공증이 없으면 설치 단계에서 Gatekeeper가 막을 수 있음 |
-| Linux | AppImage | deb는 비대상 |
-
-Release 자산에는 `latest.yml` / `latest-mac.yml` / `latest-linux.yml`과 `*.blockmap`이 반드시 있어야 한다(워크플로가 포함한다). 저장소가 private이면 클라이언트가 토큰 없이 피드를 못 읽으므로, 릴리스 자산을 public으로 두거나 generic provider를 써야 한다.
-
-배포는 Actions → **Release** 워크플로에서 patch / minor / major를 선택해 실행한다.
+- 배포 대상: `https://i-daily.letomok.workers.dev` (Workers + D1 + Assets).
+- 스키마 변경: `npm run db:generate` → `npm run db:migrate:remote`.
 
 ## 테스트 / 타입체크
 
 ```sh
-npm test         # model · store · api(IPC 라우팅) · report 왕복/쿼리/유저격리
+npm test          # model · store · api 라우팅 · report (better-sqlite3 in-memory, Node 러너)
 npm run typecheck
 ```
 
-테스트는 `ELECTRON_RUN_AS_NODE=1 electron`으로 실행한다 — better-sqlite3를 앱과 동일한 Electron ABI로 로드하므로 리빌드 핑퐁이 없다.
+테스트는 `node --import tsx --test`로 실행한다. better-sqlite3는 devDep으로 로컬 인메모리 테스트만 담당(Workers 번들에 포함되지 않음).
 
 ## 구조
 
-```
+```text
 src/
-  main/index.ts          Electron 메인: 창 · IPC('api') · DB 경로(userData) · window.open→외부 브라우저
-  main/update.ts         electron-updater(GitHub Release) · IPC update:* · 시작/주기 체크
-  main/jira.ts           Jira 연동 헬퍼
-  main/agent.ts          에이전트 연동
-  preload/index.ts       contextBridge로 window.api.request + window.api.update 노출(contextIsolation)
-  shared/model.ts        순수 로직: 타입 · 파서 · 렌더러 · docToRows/rowsToDoc (부작용 없음 → 테스트 대상)
-  shared/store.ts        better-sqlite3(진실=정규화 테이블 왕복) · queryTasks(task_rows 뷰) · migrateV1/V2
-  shared/api.ts          route(method, path, body, user, db) → {status, body} — 전송 무관 라우팅
-  shared/report.ts       주간/실적 리포트 집계
-  renderer/              index.html · styles.css(Tailwind v4 토큰·프리미티브)
-  renderer/src/          React + TS 렌더러 (main.tsx 진입)
-    App.tsx              오케스트레이터: boot · 날짜 로드/저장/이월 · dirty · 탭/패인
-    types.ts             렌더러 도메인 타입 + window.api 브릿지 타입
-    context/             EditorContext (doc 편집 공유)
-    hooks/               useAutoUpdate (GitHub Release 배너)
-    lib/                 api(IPC 래퍼) · model(순수 헬퍼) · dnd/useDnd(드래그) · ui
-    components/          Tabs · TopHeader · Shortcuts · DayCard · TicketsPane · ConfigPane
-                         WeeklyReportPane · Toast · ContextMenu · DragHandle · GoButton
-    components/sections/ SectionList · List/Raw/Scrum(Section · Block · Space · Task) · SubList
-electron.vite.config.ts  main / preload / renderer 3섹션 · React + Tailwind 플러그인(renderer)
-electron-builder.yml     3-OS 타깃 · asarUnpack(better-sqlite3) · publish github(preinpost/i-daily)
-test/                    model · store · api · report 테스트 · tiny.ts(expect shim)
+  worker/index.ts        Cloudflare Workers 엔트리: env.DB(D1) → Drizzle → d1Backend → Hono. /api/* 처리, 정적은 assets 위임.
+  server/app.ts          Hono 앱: 도메인 라우트(jira/lunch/agent) + 일지 CRUD catch-all(routeWith).
+  server/jira.ts         Jira OAuth 2.0 (3LO) + REST — 서버 라우트 콜백(/api/jira/callback).
+  server/lunch.ts        점심 탭 카카오 로컬 검색(fetch).
+  server/agent.ts        주간보고 결정적 집계(Workers는 CLI spawn 불가 → 에이전트 비활성화).
+  shared/backend.ts      Backend seam — route()가 DB 드라이버를 추상화한 인터페이스.
+  shared/schema.ts       Drizzle 스키마 = 진실의 원천(9테이블 + task_rows 뷰).
+  shared/store-drizzle.ts D1용 스토어(Drizzle, batch). store.ts(better-sqlite3)와 동일 진실.
+  shared/store.ts        better-sqlite3 스토어 + sqliteBackend — 테스트 전용(devDep).
+  shared/api.ts          route() → routeWith(backend): 전송·DB 드라이버 무관 라우팅.
+  shared/model.ts        순수 로직: 타입 · 파서 · 렌더러 · docToRows/rowsToDoc (부작용 없음 → 테스트 대상).
+  shared/report.ts       주간/실적 리포트 집계.
+  renderer-web/          index.html · main.tsx — 웹 진입(window.api → webApi 설치).
+  renderer/              styles.css(Tailwind v4 토큰·프리미티브, @source로 컴포넌트 스캔)
+  renderer/src/          React + TS 렌더러 (App 등, Electron·웹 공유 컴포넌트)
+    web-api.ts           브라우저 전용 window.api — fetch 기반 request + 도메인 라우트 호출.
+    lib/api.ts           api(method,path,body) 전송 래퍼.
+    components/          Tabs · TopHeader · DayCard · TicketsPane · ConfigPane · LunchPane · WeeklyReportPane 등.
+wrangler.jsonc           Workers 설정: D1 바인딩 + Assets(SPA) + nodejs_compat.
+vite.web.config.ts       웹 SPA 빌드(React + Tailwind). root=src/renderer-web.
+drizzle.config.ts        drizzle-kit 설정(schema → migrations).
+migrations/              D1 마이그레이션 SQL.
+test/                    model · store · api · report 테스트 · tiny.ts(expect shim).
 ```
 
 ## 데이터 / 스키마
 
-DB 위치는 `app.getPath('userData')/i-daily.db`다(패키지 앱 번들은 읽기전용이라 쓰기 가능한 userData에 둔다). `DB_PATH` env로 변경할 수 있다.
-
-- macOS: `~/Library/Application Support/i-daily/i-daily.db`
-- Windows: `%APPDATA%\i-daily\i-daily.db`
-- Linux: `~/.config/i-daily/i-daily.db`
+DB 는 Cloudflare D1(SQLite)다. 스키마의 진실 원천은 `src/shared/schema.ts`(Drizzle) 이고, `drizzle-kit generate` 가 `migrations/*.sql` 을 생성한다. 적용은 `wrangler d1 migrations apply i-daily --local|--remote`.
 
 하루치 `Doc`는 정규화된 행들로 왕복한다.
 
@@ -117,8 +101,10 @@ DB 위치는 `app.getPath('userData')/i-daily.db`다(패키지 앱 번들은 읽
 - `spaces(...)` → `tasks(... jkey, descr, progress, due, subs_json)` — 스크럼 태스크(하위 = subs_json).
 - `list_items(user, date, pos, done, jkey, descr, progress, due, subs_json)` — 일일 진행 업무.
 - `shortcuts(user, pos, name, url)` — 바로가기.
+- `settings(user, json)` · `jira_auth(user, json)` — user별 config / Jira OAuth 토큰.
 - `task_rows` (VIEW) — 스크럼 태스크 + 일일 항목을 `(date, side, space, jkey, descr, progress, due)`로 평탄화(빈 행 제외). side ∈ prev | today | daily.
-- v1(`days.doc` JSON blob) DB는 첫 실행 시 자동 변환한다(원본은 `*_v1` 테이블로 보존).
+
+스키마는 모든 테이블의 PK가 `(user, ...)`로 시작 → DB 재설계 없이 멀티유저 지원 구조. 현재는 `user="local"` 상수(PoC).
 
 ## 설정 (⚙️ 설정 탭 → DB 저장)
 
@@ -132,4 +118,16 @@ DB 위치는 `app.getPath('userData')/i-daily.db`다(패키지 앱 번들은 읽
 - 스페이스 입력 자동완성은 설정이 아니라 **과거 일지에 쓴 라벨**을 학습한다 (`GET /api/spaces`, 최근 사용순).
 - API: `GET/PUT /api/config`.
 - 미설정 값은 환경변수(`OWNER` · `JIRA_BASE`)로 초기값만 주입할 수 있다(공개 배포 시 비운다).
-- 기타 env: `DB_PATH` · `IDAILY_USER`(로컬 유저, 기본 `local`).
+- 기타 env: `JIRA_REDIRECT_URI`(Jira OAuth 콜백 URL, 미설정 시 요청 오리진 사용).
+
+## TODO — 남은 작업
+
+웹 전환은 완료했고, 다음은 정식 사용을 위한 남은 항목들이다.
+
+- [ ] **Atlassian OAuth 로그인** — 현재 `user="local"` 상수. `read:me` 스코프로 account_id 를 받아 세션에 저장 → `user` 주입. Jira 연결 토큰과 동일 OAuth 흐름 재용. 멀티유저 전환의 핵심.
+- [ ] **Jira OAuth state 저장소** — `server/jira.ts`의 `_pending` 이 in-memory. Workers 는 무상태/격리 인스턴스라 멀티 인스턴스에선 state 를 D1/KV/쿠키에 저장해야 한다.
+- [ ] **Jira redirect URI 등록** — Atlassian 개발자 콘솔에 `https://i-daily.letomok.workers.dev/api/jira/callback` 등록 필요(현재는 인가 URL 생성까지만 검증).
+- [ ] **에이전트 CLI 연동** — Workers 는 로컬 프로세스 spawn 불가 → 주간보고 `useAgent` 비활성화(결정적 집계만). 별도 서비스/서버리스 함수로 분리하거나 브라우저 측 에이전트 호출 경로 검토.
+- [ ] **자동업데이트** — 웹은 새로고침이 곧 업데이트. `useAutoUpdate` 훅의 update.* 스텁을 제거하거나 "새로고침" 안내로 교체.
+- [ ] **better-sqlite3 제거** — 현재 테스트 전용 devDep 으로 잔존(빠른 in-memory 테스트). D1 기반 테스트(로컬 wrangler D1)로 전환하면 완전 제거 가능.
+- [ ] **D1 동시성** — better-sqlite3 동기/단일 프로세스. D1 은 자동커밋 + batch. 다중 워커 배포 시 WAL/단일 인스턴스 정책 점검.
