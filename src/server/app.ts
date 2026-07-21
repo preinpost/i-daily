@@ -1,5 +1,5 @@
 // server/app.ts — Hono 앱 (Cloudflare Workers).
-// shared/api.ts 의 route(method,path,body,backend) 에 Backend provider 를 주입받는다.
+// shared/api.ts 의 route(method,path,body,backend) 에 Backend 를 주입받는다.
 // 도메인 라우트(jira/login/lunch/agent) 는 기존 IPC 채널을 대체.
 // 인증: 세션(sid 쿠키 → sessions D1) 기반. 미로그인 시 user=SETUP("setup").
 import { Hono, type Context } from "hono";
@@ -19,14 +19,15 @@ import {
 
 type DB = DrizzleD1Database;
 
-// 도메인 라우트가 jira 토큰 저장을 위해 Drizzle db 가 필요 → provider 가 (backend, db) 쌍을 준다.
-export function buildApp(getPair: () => { backend: Backend; db: DB }): Hono {
+// 워커 엔트리가 요청마다 새 앱을 만들어 (이미 인증된) backend 와 db 를 직접 건네준다.
+// 도메인 라우트(jira)는 토큰 저장을 위해 Drizzle db 도 함께 받는다.
+export function buildApp(backend: Backend, db: DB): Hono {
 	const app = new Hono();
 
 	// ── 점심 ── 카카오 로컬 키워드 검색.
 	app.post("/api/lunch/search", async (c) => {
 		const opts = await c.req.json().catch(() => ({}));
-		const r = await searchLunch(getPair().backend, opts);
+		const r = await searchLunch(backend, opts);
 		return c.json(r);
 	});
 
@@ -34,7 +35,7 @@ export function buildApp(getPair: () => { backend: Backend; db: DB }): Hono {
 	app.get("/api/agent/scan", (c) => c.json(scanAgents()));
 	app.post("/api/agent/generate", async (c) => {
 		const opts = await c.req.json().catch(() => ({}));
-		const r = await generateReport(getPair().backend, opts);
+		const r = await generateReport(backend, opts);
 		return c.json(r);
 	});
 	app.get("/api/agent/default-prompt", (c) => c.json(defaultPrompt()));
@@ -68,18 +69,15 @@ export function buildApp(getPair: () => { backend: Backend; db: DB }): Hono {
 	};
 
 	app.get("/api/jira/status", async (c) => {
-		const { backend, db } = getPair();
 		return c.json(await jiraStatus(backend, db));
 	});
 	app.get("/api/jira/connect", async (c) => {
-		const { backend, db } = getPair();
 		// 클라이언트가 새 창으로 열 수 있도록 인가 URL 을 반환. 진행 상태 등록.
 		const r = await jiraConnect(backend, db, originOf(c));
 		return c.json(r);
 	});
 	// Atlassian 이 리다이렉트시키는 콜백. code/state 로 토큰 교환 → 성공/실패 HTML.
 	app.get("/api/jira/callback", async (c) => {
-		const { db } = getPair();
 		let code: string | null = null;
 		let state: string | null = null;
 		let err: string | null = null;
@@ -112,11 +110,9 @@ export function buildApp(getPair: () => { backend: Backend; db: DB }): Hono {
 		);
 	});
 	app.get("/api/jira/tickets", async (c) => {
-		const { backend, db } = getPair();
 		return c.json(await jiraTickets(backend, db));
 	});
 	app.post("/api/jira/logout", async (c) => {
-		const { backend, db } = getPair();
 		// 세션 sid 는 쿠키에서 판독 — 로그아웃은 jira_auth + 세션 동시 삭제.
 		const sid = readSid(c);
 		const r = await jiraLogout(backend, db, sid);
@@ -128,7 +124,6 @@ export function buildApp(getPair: () => { backend: Backend; db: DB }): Hono {
 
 	// ── 로그인 상태 ── 현재 user(세션)와 setup 여부.
 	app.get("/api/me", (c) => {
-		const { backend } = getPair();
 		return c.json({ user: backend.user, isSetup: backend.user === SETUP_USER });
 	});
 
@@ -142,7 +137,6 @@ export function buildApp(getPair: () => { backend: Backend; db: DB }): Hono {
 			method === "GET" || method === "HEAD"
 				? undefined
 				: await c.req.json().catch(() => undefined);
-		const { backend } = getPair();
 		const r = await route(method, path, body, backend);
 		return c.json(r.body, r.status as any);
 	});

@@ -1,45 +1,16 @@
-// 렌더러 도메인 타입 — 백엔드 shared/model.ts 의 형태를 미러링(전송 경계에서 JSON).
-
-export type Task = {
-	key: string;
-	desc: string;
-	progress: number | "";
-	due: string;
-	subs?: string[];
-};
-export type Space = { label: string; tasks: Task[] };
-export type Block = { spaces: Space[]; issues: string; collab: string };
-export type Scrum = { prev: Block; today: Block };
-export type ListItem = {
-	done: boolean;
-	key: string;
-	desc: string;
-	progress?: number | "";
-	due?: string;
-	subs?: string[];
-};
-export type Section =
-	| { title: string; kind: "scrum" }
-	| { title: string; kind: "list"; items: ListItem[] }
-	| { title: string; kind: "raw"; body: string };
-export type Doc = {
-	date: string;
-	owner: string;
-	preamble: string;
-	sections: Section[];
-	scrum: Scrum;
-};
-export type Shortcut = { name: string; url: string };
-
-export type Config = {
-	owner: string;
-	jiraBase: string;
-	reportAgent: string;
-	reportPrompt: string;
-	lunchLat: string;
-	lunchLng: string;
-	lunchRadius: string;
-};
+// 렌더러 도메인 타입. 전송 경계(JSON) 형태는 shared/model.ts 가 단일 원천 —
+// 중복 선언 대신 그대로 re-export 하고, 렌더러 전용 타입만 여기서 정의한다.
+export type {
+	Task,
+	Space,
+	Block,
+	Scrum,
+	ListItem,
+	Section,
+	Doc,
+	Shortcut,
+	Config,
+} from "../../shared/model";
 
 export type Meta = { today: string | null; owner: string; jiraBase: string };
 
@@ -56,28 +27,13 @@ export type Ticket = {
 
 export type Which = "prev" | "today";
 
-export type UpdateStatus = {
-	state: string;
-	version?: string;
-	releaseNotes?: string | null;
-	percent?: number;
-	transferred?: number;
-	total?: number;
-	message?: string;
-};
-
-// preload 가 노출한 window.api 브릿지.
+// window.api 브릿지 — 브라우저에선 fetch 기반 web-api.ts 가 구현.
 export type Api = {
 	request: (
 		method: string,
 		path: string,
 		body?: unknown,
 	) => Promise<{ status: number; body: any }>;
-	lifecycle: {
-		setDirty: (v: boolean) => void;
-		confirmQuit: () => void;
-		onSaveAndQuit: (cb: () => void) => () => void;
-	};
 	jira: {
 		status: () => Promise<any>;
 		connect: () => Promise<any>;
@@ -92,14 +48,6 @@ export type Api = {
 	};
 	lunch: {
 		search: (opts: unknown) => Promise<any>;
-	};
-	update: {
-		getVersion: () => Promise<string>;
-		getStatus: () => Promise<UpdateStatus>;
-		check: () => Promise<UpdateStatus>;
-		download: () => Promise<UpdateStatus>;
-		install: () => Promise<void>;
-		onStatus: (cb: (s: UpdateStatus) => void) => () => void;
 	};
 };
 

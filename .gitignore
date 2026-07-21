@@ -16,3 +16,6 @@ worker-configuration.d.ts
 *.db
 *.db-*
 *.db.bak-*
+
+# pi-subagents runtime artifacts
+.pi-subagents/

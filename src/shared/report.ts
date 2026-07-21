@@ -1,6 +1,6 @@
 // report.ts — 주간업무보고(Fri~Thu) 집계. 순수 로직(부작용 없음 → 테스트 대상).
 // 하이브리드 원칙: 티켓키·진척%·마감일 등 "숫자/식별자"는 여기서 결정적으로 확정하고,
-// 에이전트는 buildAgentPrompt()가 준 digest의 서술만 다듬는다(숫자 변조 금지 규칙 포함).
+// 결정적 집계(buildWeeklyDigest) + Teams 붙여넣기용 텍스트(renderDigestText) 생성.
 import { fmtMeta, type TaskRow } from "./model.ts";
 
 // ───────────────────────── 기간 계산 (전주 금 ~ 금주 목) ─────────────────────────
@@ -234,55 +234,3 @@ export const DEFAULT_REPORT_PROMPT = [
 	"",
 	"## 출력은 첫 줄부터 스페이스 헤더([...])로 시작. 상단 제목/기간 헤더는 붙이지 마라.",
 ].join("\n");
-
-export function buildAgentPrompt(
-	d: WeeklyDigest,
-	customPrompt?: string,
-): string {
-	const tpl =
-		customPrompt && customPrompt.trim() ? customPrompt : DEFAULT_REPORT_PROMPT;
-	const digestJson = JSON.stringify(digestForPrompt(d), null, 2);
-	const rawJson = JSON.stringify(d.raw ?? [], null, 2);
-	const dataBlock = [
-		"## [집계 데이터] (확정 — 티켓키·진척·마감·subs는 이 값 그대로)",
-		digestJson,
-		"",
-		"## [원본 로그] (요일별 원본 — 서술 병합·검토 참고용, 수치는 집계 우선)",
-		rawJson,
-	].join("\n");
-	const filled = tpl
-		.split("{from}")
-		.join(d.from)
-		.split("{to}")
-		.join(d.to)
-		.split("{owner}")
-		.join(d.owner || "");
-	return filled.includes("{data}")
-		? filled.split("{data}").join(dataBlock)
-		: filled + "\n\n" + dataBlock;
-}
-
-// 프롬프트에 넣을 최소 데이터(모델 노이즈 축소).
-function digestForPrompt(d: WeeklyDigest) {
-	return {
-		from: d.from,
-		to: d.to,
-		owner: d.owner,
-		spaces: d.spaces.map((sp) => ({
-			space: sp.label,
-			tasks: sp.tasks.map((t) => ({
-				key: t.key || undefined,
-				desc: t.desc || undefined,
-				progress: t.progress ?? undefined,
-				due: t.due || undefined,
-				dates: t.dates,
-				subs: t.subs.length ? t.subs : undefined,
-				notes: t.subs.length
-					? undefined
-					: t.notes.length
-						? t.notes
-						: [t.desc].filter(Boolean),
-			})),
-		})),
-	};
-}

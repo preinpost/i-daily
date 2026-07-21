@@ -1,10 +1,5 @@
 // web-api.ts — 브라우저 전용 window.api 구현.
-// fetch 기반 request(일지 CRUD) + 도메인 라우트 호출(jira/lunch/agent).
-// 자동업데이트(update.*) 는 웹에 없으므로 no-op 스텁 — 컴포넌트가 옵셔널 체이닝으로 스킵.
-//
-// 설계: 모든 컴포넌트가 window.api?.X 옵셔널 체이닝으로 접근하므로,
-// request(=일지 CRUD)만 실제 구현하고 나머지는 앱이 죽지 않게 빈 스텁을 둔다.
-// Jira/Lunch/Agent/Update/Lifecycle은 다음 단계(서버 이식)에서 채운다.
+// fetch 기반 request(일지 CRUD) + 도메인 라우트 호출(jira/lunch/agent) — 모두 동일 오리진 /api/* HTTP.
 import type { Api } from "./types";
 
 // 동일 오리진 /api/* 로 HTTP 호출. Hono(Workers) 서버가 처리.
@@ -51,21 +46,10 @@ const isAtlassianAuthorize = (u: string): boolean => {
 	}
 };
 
-// 자동업데이트(update.*) 는 웹에 없음 → no-op 스텁. 컴포넌트가 옵셔널 체이닝으로 호출해도 안전.
-const noop = () => {};
-const noopAsync = async () => null;
-
 export const webApi: Api = {
 	request,
 
-	lifecycle: {
-		setDirty: noop,
-		confirmQuit: noop,
-		onSaveAndQuit: () => noop, // 구독 해제 no-op
-	},
-
-	// 도메인 라우트가 서버에 구현됨 — IPC 대신 동일 경로 HTTP 호출.
-	// 단, update.* 는 웹에 자동업데이트가 없으므로 유지(아래 스텁).
+	// 도메인 라우트가 서버에 구현됨 — 동일 경로 HTTP 호출.
 	jira: {
 		status: () => get("/api/jira/status"),
 		connect: async () => {
@@ -90,13 +74,5 @@ export const webApi: Api = {
 	},
 	lunch: {
 		search: (opts: unknown) => post("/api/lunch/search", opts),
-	},
-	update: {
-		getVersion: noopAsync as any,
-		getStatus: noopAsync as any,
-		check: noopAsync as any,
-		download: noopAsync as any,
-		install: noopAsync as any,
-		onStatus: () => noop,
 	},
 };

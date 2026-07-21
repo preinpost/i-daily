@@ -159,9 +159,6 @@ export function snapListItem(it: ListItem): Task {
 		subs: (it.subs || []).slice(),
 	};
 }
-export function listItemToTask(it: ListItem): Task {
-	return snapListItem(it);
-}
 // 일일 항목 ↔ 스크럼 태스크 매칭 ID. 티켓 키 우선, 없으면 설명.
 export function itemId(it?: { key?: string; desc?: string } | null): string {
 	if (!it) return "";

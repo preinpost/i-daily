@@ -109,10 +109,6 @@ export async function jiraConnect(
 			error:
 				"Jira OAuth 클라이언트(client id/secret)가 서버에 설정되지 않았습니다. 관리자에게 문의하세요.",
 		};
-	// backend.user 는 connect 시작 user(SETUP or account_id). config 는 토큰 교환/사용에는 안 쓰지만
-	// 향후 확장을 위해 user 프로파일을 그대로 둔다. 여기선 임시 미사용 경고 회피.
-	void backend;
-
 	const state = randomBytes(16).toString("hex");
 	const redir = redirectUri(origin);
 	const q = new URLSearchParams({

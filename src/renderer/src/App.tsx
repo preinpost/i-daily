@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { EditorContext } from "./context/EditorContext";
 import { useToast } from "./components/Toast";
-import { useAutoUpdate } from "./hooks/useAutoUpdate";
 import { Tabs, type View } from "./components/Tabs";
 import { TopHeader } from "./components/TopHeader";
 import { DayCard } from "./components/DayCard";
@@ -24,7 +23,6 @@ import type { Config, Doc, Meta } from "./types";
 
 export function App() {
 	const toast = useToast();
-	const { version, checkNow, banner } = useAutoUpdate();
 
 	const [ready, setReady] = useState(false);
 	// 인증 게이트: null=확인 전, false=미로그인(로그인 화면), true=로그인됨(앱).
@@ -63,10 +61,8 @@ export function App() {
 	const bump = () => setVer((v) => v + 1);
 	const setDot = (cls: string, note?: string) =>
 		setSaveState((s) => ({ cls, note: note ?? s.note }));
-	// dirty 는 메인 프로세스도 알아야 종료(Cmd+Q) 시 경고할 수 있다.
 	const setDirty = (v: boolean) => {
 		dirty.current = v;
-		window.api.lifecycle?.setDirty(v);
 	};
 	const markDirty = () => {
 		setDirty(true);
@@ -300,16 +296,6 @@ export function App() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
-	// 종료 시 “저장 후 종료” 선택 → 메인이 요청, 저장 성공하면 종료 확정.
-	useEffect(() => {
-		const off = window.api.lifecycle?.onSaveAndQuit(async () => {
-			const ok = await saveNow();
-			if (ok) window.api.lifecycle.confirmQuit();
-		});
-		return off;
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
-
 	useEffect(() => {
 		document.body.classList.toggle("viewing-web", view !== "log");
 		const qs = new URLSearchParams(location.search);
@@ -322,22 +308,14 @@ export function App() {
 
 	// 미로그인 → 전체화면 로그인 게이트(URL 은 그대로).
 	if (authed === false) {
-		return (
-			<>
-				{banner}
-				<Login />
-			</>
-		);
+		return <Login />;
 	}
 
 	if (authed === null || !ready || !docRef.current) {
 		return (
-			<>
-				{banner}
-				<div className="mx-auto max-w-[1080px] px-[18px] py-10 text-ink-2">
-					불러오는 중…
-				</div>
-			</>
+			<div className="mx-auto max-w-[1080px] px-[18px] py-10 text-ink-2">
+				불러오는 중…
+			</div>
 		);
 	}
 
@@ -345,17 +323,14 @@ export function App() {
 		<EditorContext.Provider
 			value={{ doc: docRef.current, meta, config, commit, rerender: bump }}
 		>
-			{banner}
 			<Tabs view={view} onView={setView} />
 			<TopHeader
 				curDate={curDate}
 				meta={meta}
-				appVersion={version}
 				saveCls={saveState.cls}
 				saveNote={saveState.note}
 				onSave={saveNow}
 				onRevert={revert}
-				onCheckUpdate={checkNow}
 			/>
 			<main className="mx-auto max-w-[1080px] px-[18px]">
 				<DayCard

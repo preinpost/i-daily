@@ -3,7 +3,6 @@ import {
 	weekWindow,
 	buildWeeklyDigest,
 	renderDigestText,
-	buildAgentPrompt,
 } from "../src/shared/report.ts";
 import type { TaskRow } from "../src/shared/model.ts";
 
@@ -160,34 +159,11 @@ test("renderDigestText: Teams 붙여넣기용 스페이스 그룹 + 메타", () 
 	expect(txt).not.toContain("전일 재기술");
 });
 
-test("buildAgentPrompt: 변조금지 규칙 + 집계 데이터 포함", () => {
-	const d = buildWeeklyDigest(rows(), "", "2026-07-10", "2026-07-16");
-	const p = buildAgentPrompt(d);
-	expect(p).toContain("한 글자도 바꾸지 마라");
-	expect(p).toContain("CLOUD-432");
-	expect(p).toContain("[집계 데이터]");
-	expect(p).toContain("[원본 로그]");
-});
-
-test("digest.raw: 요일별 원본을 병합 없이 보존 + prompt에 포함", () => {
+test("digest.raw: 요일별 원본을 병합 없이 보존", () => {
 	const d = buildWeeklyDigest(rows(), "", "2026-07-10", "2026-07-16");
 	// prev 제외, work side만 → 07-14(2건) + 07-15(1건) = 2일치
 	expect(d.raw.map((r) => r.date)).toEqual(["2026-07-14", "2026-07-15"]);
 	const day15 = d.raw.find((r) => r.date === "2026-07-15")!;
 	expect(day15.entries[0].key).toBe("CLOUD-432");
 	expect(day15.entries[0].desc).toBe("패치 적용"); // 원본 그대로(병합 안됨)
-	const p = buildAgentPrompt(d);
-	expect(p).toContain("패치 적용"); // 원본 로그에 들어감
-});
-
-test("buildAgentPrompt: 커스텀 override — {from}/{to}/{owner} 치환 + {data} 위치 + 집계 포함", () => {
-	const d = buildWeeklyDigest(rows(), "김철수", "2026-07-10", "2026-07-16");
-	const p = buildAgentPrompt(
-		d,
-		"기간 {from}~{to} 작성자 {owner}\n---\n{data}\n---\n끝",
-	);
-	expect(p).toContain("기간 2026-07-10~2026-07-16 작성자 김철수");
-	expect(p).toContain("CLOUD-432"); // {data} 자리에 집계 JSON
-	expect(p).toContain("---\n끝"); // {data} 뒤 텍스트 보존
-	expect(p).not.toContain("한 글자도 바꾸지 마라"); // 기본값 대체됨
 });

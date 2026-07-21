@@ -5,21 +5,17 @@ import type { Meta } from "../types";
 export function TopHeader({
   curDate,
   meta,
-  appVersion,
   saveCls,
   saveNote,
   onSave,
   onRevert,
-  onCheckUpdate,
 }: {
   curDate: string;
   meta: Meta;
-  appVersion: string;
   saveCls: string;
   saveNote: string;
   onSave: () => void;
   onRevert: () => void;
-  onCheckUpdate: () => void;
 }) {
   const canRevert = saveCls === "dirty";
   const d = parseYmd(curDate);
@@ -33,14 +29,7 @@ export function TopHeader({
     <header className="topbar sticky top-tabh z-20 border-b border-line">
       <div className="mx-auto flex max-w-[1080px] flex-wrap items-center gap-3 px-[18px] py-2">
         <div className="flex cursor-default select-none items-center gap-2 text-[15px] font-bold tracking-[-0.2px]">
-          <span className="brand-dot" /> i-daily{" "}
-          <span
-            className="cursor-pointer rounded-full bg-chip px-1.5 py-px text-[10.5px] font-semibold text-ink-2 hover:text-accent"
-            title="클릭: 업데이트 확인"
-            onClick={onCheckUpdate}
-          >
-            {appVersion ? "v" + appVersion : ""}
-          </span>
+          <span className="brand-dot" /> i-daily
         </div>
 
         <div className="ml-auto text-right leading-tight">

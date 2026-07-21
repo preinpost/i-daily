@@ -124,7 +124,6 @@ export function ticketUrl(key: string): string {
 	return `${path}/${(key || "").trim()}`;
 }
 
-export const PORT = Number(env("PORT", "8787"));
 
 // ───────────────────────── 모델 헬퍼 ─────────────────────────
 export const emptyBlock = (): Block => ({
@@ -503,7 +502,6 @@ export function serializeDoc(doc: Doc): string {
 	return parts.join("\n\n") + "\n";
 }
 
-export const teamsOf = (doc: Doc): string => renderScrum(doc.scrum);
 export const dayResponse = (doc: Doc) => ({
 	data: doc,
 	teams: renderScrum(doc.scrum),
