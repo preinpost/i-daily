@@ -1,14 +1,23 @@
-// route() — IPC가 호출하는 전송 무관 라우팅. 기존 server.ts handle()에서 추출한 신규 코드라 커버.
+// route() — Hono 앱이 호출하는 전송 무관 라우팅. 실제 D1(Miniflare) + d1Backend 로 검증.
 import { test, expect } from "./tiny.ts";
-import { createDb } from "../src/shared/store.ts";
-import { route } from "../src/shared/api.ts";
+import { freshDb } from "./d1.ts";
+import { d1Backend } from "../src/shared/store-drizzle.ts";
+import { route as routeRaw } from "../src/shared/api.ts";
 import { parseDoc } from "../src/shared/model.ts";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
 
 const U = "u1";
-const db = () => createDb();
+// db + user → 기존 route(method,path,body,user,db) 호출 형태를 유지하는 얇은 헬퍼.
+const route = (
+	method: string,
+	path: string,
+	body: any,
+	user: string,
+	db: DrizzleD1Database,
+) => routeRaw(method, path, body, d1Backend(db, user));
 
 test("route: /api/days 초기 빈 목록 + 메타", async () => {
-	const r = await route("GET", "/api/days", undefined, U, db());
+	const r = await route("GET", "/api/days", undefined, U, await freshDb());
 	expect(r.status).toBe(200);
 	expect(r.body.days).toEqual([]);
 	expect(typeof r.body.today).toBe("string");
@@ -16,7 +25,7 @@ test("route: /api/days 초기 빈 목록 + 메타", async () => {
 });
 
 test("route: config 최초 firstRun → PUT 저장 → configured", async () => {
-	const d = db();
+	const d = await freshDb();
 	const g0 = await route("GET", "/api/config", undefined, U, d);
 	expect(g0.status).toBe(200);
 	expect(g0.body.firstRun).toBe(true);
@@ -50,7 +59,7 @@ test("route: config 최초 firstRun → PUT 저장 → configured", async () => 
 });
 
 test("route: carry로 생성 → get → 목록 왕복", async () => {
-	const d = db();
+	const d = await freshDb();
 	const date = "2026-07-10";
 	const c = await route("POST", `/api/day/${date}/carry`, undefined, U, d);
 	expect(c.status).toBe(200);
@@ -63,12 +72,12 @@ test("route: carry로 생성 → get → 목록 왕복", async () => {
 });
 
 test("route: 없는 날짜 404", async () => {
-	const r = await route("GET", "/api/day/2000-01-01", undefined, U, db());
+	const r = await route("GET", "/api/day/2000-01-01", undefined, U, await freshDb());
 	expect(r.status).toBe(404);
 });
 
 test("route: shortcuts PUT→GET 왕복", async () => {
-	const d = db();
+	const d = await freshDb();
 	const items = [{ name: "Jira", url: "https://x" }];
 	const put = await route("PUT", "/api/shortcuts", items, U, d);
 	expect(put.status).toBe(200);
@@ -77,7 +86,7 @@ test("route: shortcuts PUT→GET 왕복", async () => {
 });
 
 test("route: PUT day 저장 후 /api/tasks 쿼리(대소문자 무관)", async () => {
-	const d = db();
+	const d = await freshDb();
 	const date = "2026-07-10";
 	const doc = parseDoc(
 		"## 데일리 스크럼\n\n**[금일 진행 업무]**\n  + **[backend]**\n    + [OPIT-1](https://x/OPIT-1) 배포 (40%, ~7/12)\n- 이슈 사항: 없음\n- 협업 및 기타: 없음",
@@ -97,7 +106,7 @@ test("route: PUT day 저장 후 /api/tasks 쿼리(대소문자 무관)", async (
 });
 
 test("route: prev-daily가 직전 일일 items + block 반환", async () => {
-	const d = db();
+	const d = await freshDb();
 	const prev = parseDoc(
 		"## 일일 진행 업무\n- [OPIT-9](https://x/OPIT-9) 배포 (70%, ~7/11)\n  - 하위A\n\n## 데일리 스크럼\n\n**[금일 진행 업무]**\n- 이슈 사항: 없음\n- 협업 및 기타: 없음",
 		"2026-07-10",
@@ -121,7 +130,7 @@ test("route: prev-daily가 직전 일일 items + block 반환", async () => {
 });
 
 test("route: 과거 일지 스페이스 라벨 학습 (/api/spaces · /api/days)", async () => {
-	const d = db();
+	const d = await freshDb();
 	const empty = await route("GET", "/api/spaces", undefined, U, d);
 	expect(empty.status).toBe(200);
 	expect(empty.body.spaces).toEqual([]);

@@ -1,5 +1,4 @@
-// schema.ts — Drizzle 스키마 (진실의 원천). better-sqlite3(로컬)·D1(CF) 공통.
-// 기존 store.ts 의 raw SQL 스키마를 Drizzle 테이블 정의로 이식.
+// schema.ts — Drizzle 스키마 (진실의 원천). D1(Cloudflare) 저장소의 테이블 정의.
 // drizzle-kit generate 가 이 파일에서 migrations/*.sql 을 생성한다.
 import {
 	sqliteTable,

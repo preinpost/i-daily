@@ -1,10 +1,6 @@
-// api.ts — 전송(transport) 무관 라우팅. Electron main의 IPC 핸들러가 호출한다.
-// 기존 server.ts의 handle(Request)→Response 를 route(method,path,body,user,db)→{status,body} 로 추출.
-// 프런트 client.js의 api(method,path,body) 시그니처를 그대로 받으므로 UI 로직은 무손상.
-//
-// [방향 B] DB 드라이버를 추상화하기 위해 실제 로직은 routeWith(backend) 에 있다.
-// route(user, db) 는 better-sqlite3 를 sqliteBackend 로 감싸 routeWith 를 부르는 얇은 래퍼 —
-// 기존 호출처(test·main/index.ts) 시그니처를 무손상 유지. Workers는 routeWith + d1Backend 사용.
+// api.ts — 전송(transport) 무관 라우팅. Hono 앱(server/app.ts)이 호출한다.
+// method+path(+쿼리)+body → {status, body}. 저장소는 Backend 인터페이스로 주입받는다
+// (프로덕션=d1Backend, 테스트도 동일) → 라우팅 로직은 DB 구현과 무관.
 import {
 	todayStr,
 	dayResponse,
@@ -19,25 +15,12 @@ import {
 } from "./model.ts";
 import type { Backend } from "./backend.ts";
 import { SETUP_USER } from "./backend.ts";
-import { sqliteBackend } from "./store.ts";
 
 export type ApiResult = { status: number; body: any };
 const res = (body: any, status = 200): ApiResult => ({ status, body });
 
-// 하위 호환 래퍼: better-sqlite3 db + user → sqliteBackend → routeWith.
-// 기존 route(method,path,body,user,db) 호출처(test·Electron main)를 무손상 유지한다.
-export function route(
-	method: string,
-	rawPath: string,
-	body: any,
-	user: string,
-	db: Parameters<typeof sqliteBackend>[0],
-): Promise<ApiResult> {
-	return routeWith(method, rawPath, body, sqliteBackend(db, user));
-}
-
-// method+path(+쿼리)+body → {status, body}. backend 로 DB 드라이버를 주입받는다.
-export async function routeWith(
+// method+path(+쿼리)+body → {status, body}. backend 로 저장소를 주입받는다.
+export async function route(
 	method: string,
 	rawPath: string,
 	body: any,

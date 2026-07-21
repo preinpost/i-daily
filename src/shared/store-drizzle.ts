@@ -1,12 +1,10 @@
-// store-drizzle.ts — Drizzle 기반 저장소 (D1 / Cloudflare Workers 측).
-// store.ts(better-sqlite3·동기·Electron) 와 동일 진실(정규화 테이블)을 다루지만,
-// Drizzle 쿼리 빌더 + D1 드라이버(비동기) 로 구현. schema.ts 가 테이블 정의의 단일 원천.
+// store-drizzle.ts — Drizzle 기반 저장소 (D1 / Cloudflare Workers). 저장소의 단일 구현.
+// schema.ts 가 테이블 정의의 단일 원천. 정규화 테이블에 하루치 Doc 을 행으로 왕복.
 //
 // 설계 메모:
 //  - D1 은 트랜잭션 미지원 → 다중문장 원자쓰기는 db.batch([...]) 사용(writeDoc·writeShortcuts).
-//  - store.ts(better-sqlite3, transaction) 를 import 하지 않는다 → Workers 번들에 네이티브 모듈이 끌려들어오지 않게.
 //  - 순수 model.ts(docToRows/rowsToDoc/mergeConfig) 만 의존 → 도메인 로직 공유, 중복 없음.
-//  - Backend 인터페이스로 route() 에 주입 → 라우팅 로직은 DB 드라이버 무관.
+//  - Backend 인터페이스로 route() 에 주입 → 라우팅 로직은 저장소 구현 무관(테스트 대체 용이).
 import { eq, and, gte, lte, like, asc, desc, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { BatchItem } from "drizzle-orm/batch";
@@ -279,7 +277,7 @@ async function writeDoc(
 }
 
 // ───────────────────────── config (settings, user별 JSON 한 행) ─────────────────────────
-async function readConfig(db: DB, user: string): Promise<Config> {
+export async function readConfig(db: DB, user: string): Promise<Config> {
 	const row = await db
 		.select({ json: settings.json })
 		.from(settings)
@@ -296,7 +294,7 @@ async function readConfig(db: DB, user: string): Promise<Config> {
 	return mergeConfig(stored);
 }
 
-async function writeConfig(
+export async function writeConfig(
 	db: DB,
 	user: string,
 	cfg: Partial<Config>,
@@ -329,7 +327,7 @@ export async function migrateConfig(
 	await writeConfig(db, toUser, cfg);
 }
 
-async function hasConfig(db: DB, user: string): Promise<boolean> {
+export async function hasConfig(db: DB, user: string): Promise<boolean> {
 	const row = await db
 		.select({ user: settings.user })
 		.from(settings)
@@ -630,7 +628,7 @@ export function d1Store(db: DB, user: string): Store {
 	};
 }
 
-// D1 + Drizzle → Backend. Workers 엔트리가 env.DB 로 이것을 만들어 routeWith 에 주입.
+// D1 + Drizzle → Backend. Workers 엔트리가 env.DB 로 이것을 만들어 route() 에 주입.
 export function d1Backend(db: DB, user: string): Backend {
 	return {
 		user,

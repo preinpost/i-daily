@@ -1,6 +1,6 @@
 // backend.ts — route() 가 저장소에 접근하는 추상 seam.
-// better-sqlite3(Electron/로컬) 과 D1(Workers) 를同一个 인터페이스 뒤에 숨긴다.
-// route()는 이 인터페이스만 의존하므로, 전송·DB 드라이버가 바뀌어도 라우팅 로직은 무손상.
+// 프로덕션은 D1(d1Backend) 하나지만, route()가 이 인터페이스만 의존하므로
+// 테스트가 동일 backend 를 주입해 라우팅 로직을 격리 검증할 수 있다.
 import type { Store, Config, TaskFilter, TaskRow } from "./model.ts";
 
 /**

@@ -1,12 +1,12 @@
 // server/app.ts — Hono 앱 (Cloudflare Workers).
-// shared/api.ts 의 routeWith(method,path,body,backend) 에 Backend provider 를 주입받는다.
+// shared/api.ts 의 route(method,path,body,backend) 에 Backend provider 를 주입받는다.
 // 도메인 라우트(jira/login/lunch/agent) 는 기존 IPC 채널을 대체.
 // 인증: 세션(sid 쿠키 → sessions D1) 기반. 미로그인 시 user=SETUP("setup").
 import { Hono, type Context } from "hono";
 import type { Backend } from "../shared/backend.ts";
 import { SETUP_USER } from "../shared/backend.ts";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { routeWith } from "../shared/api.ts";
+import { route } from "../shared/api.ts";
 import { searchLunch } from "./lunch.ts";
 import { generateReport, scanAgents, defaultPrompt } from "./agent.ts";
 import {
@@ -133,7 +133,7 @@ export function buildApp(getPair: () => { backend: Backend; db: DB }): Hono {
 	});
 
 	// ── 일지 CRUD catch-all ── 도메인 라우트 이후에 매칭되도록 마지막에 등록.
-	// /api/day, /api/days, /api/config, /api/tasks, /api/shortcuts, /api/spaces 등 → routeWith.
+	// /api/day, /api/days, /api/config, /api/tasks, /api/shortcuts, /api/spaces 등 → route.
 	app.all("/api/*", async (c) => {
 		const method = c.req.method;
 		const qi = c.req.url.indexOf("?");
@@ -143,7 +143,7 @@ export function buildApp(getPair: () => { backend: Backend; db: DB }): Hono {
 				? undefined
 				: await c.req.json().catch(() => undefined);
 		const { backend } = getPair();
-		const r = await routeWith(method, path, body, backend);
+		const r = await route(method, path, body, backend);
 		return c.json(r.body, r.status as any);
 	});
 

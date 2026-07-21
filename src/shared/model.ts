@@ -551,7 +551,7 @@ export function dailyToBlock(items: ListItem[]): Block {
 }
 
 // ───────────────────────── Doc ↔ 정규화 행 (테이블이 진실) ─────────────────────────
-// 하루치 Doc을 실제 테이블 행들로 평탄화 / 다시 조립. store.ts가 SQL로 왕복시킴.
+// 하루치 Doc을 실제 테이블 행들로 평탄화 / 다시 조립. store-drizzle.ts가 D1로 왕복시킴.
 // 냄새였던 days.doc JSON blob 대신 이 행들이 진실. side ∈ prev|today.
 export type DayRow = { owner: string; preamble: string };
 export type SectionRow = {
