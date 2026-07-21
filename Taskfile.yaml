@@ -17,13 +17,19 @@ tasks:
     cmds:
       - npm install
 
+  # NOTE: wrangler dev 는 기동 시 wrangler.jsonc 의 assets.directory(./dist/web)
+  #       존재 여부를 검사한다. clone 직후나 `task clean` 이후엔 dist 가 없어
+  #       wrangler 가 즉시 종료(exit 1)되고, 그 결과 8787 이 안 떠서 Vite 프록시가
+  #       /api/* 를 못 넘겨 ECONNREFUSED 가 난다. → dev 전에 최소 1회 `task build` 필요.
+  #       (개발 중 정적 파일 자체는 Vite(5173) 가 서빙하므로 내용은 최신이 아니어도 무방)
   dev:
-    desc: 개발 서버 (API=wrangler + UI=Vite HMR, 동시 실행)
+    desc: 개발 서버 (API=wrangler + UI=Vite HMR, 동시 실행) · 최초 실행 전 task build 필요
     aliases: [d]
     cmds:
       - npm run dev
 
   dev:api:
+    # dist/web 가 없으면 assets.directory 검사 실패로 종료된다 (위 dev NOTE 참고)
     desc: API 만 (wrangler dev · D1 로컬)
     cmds:
       - npm run dev:api
