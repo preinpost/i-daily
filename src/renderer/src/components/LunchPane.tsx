@@ -42,7 +42,67 @@ export function LunchPane({
 		needKey?: boolean;
 		places: Place[];
 	}>({ loading: false, places: [] });
+	const [picks, setPicks] = useState<Place[]>([]);
+	const [picking, setPicking] = useState(false);
 	const didAuto = useRef(false);
+
+	// 여러 음식 카테고리(카페·디저트 제외)를 각각 검색해 모은 뒤 중복 제거,
+	// 그 풀에서 무작위 3곳을 뽑는다. 거리순 단일 검색보다 종류가 고르게 섞인다.
+	const RANDOM_CATEGORIES = [
+		"한식",
+		"중식",
+		"일식",
+		"양식",
+		"치킨",
+		"분식",
+		"고기 구이",
+		"해산물",
+	];
+
+	async function pickRandom() {
+		const lunch = window.api?.lunch;
+		if (!lunch || picking) return;
+		setPicking(true);
+		try {
+			const results = await Promise.all(
+				RANDOM_CATEGORIES.map((q) =>
+					lunch
+						.search({
+							query: q,
+							lat: config.lunchLat,
+							lng: config.lunchLng,
+							radius: config.lunchRadius || "1000",
+							size: 45,
+						})
+						.catch(() => null),
+				),
+			);
+			// 카테고리별 결과 합치기 + placeUrl(없으면 이름)으로 중복 제거
+			const seen = new Set<string>();
+			const pool: Place[] = [];
+			for (const r of results) {
+				if (!r || !(r as any).ok) continue;
+				for (const p of ((r as any).places || []) as Place[]) {
+					const id = p.placeUrl || p.name;
+					if (seen.has(id)) continue;
+					seen.add(id);
+					pool.push(p);
+				}
+			}
+			if (!pool.length) {
+				// 가져온 게 없으면 현재 목록으로 폴백
+				pool.push(...state.places);
+			}
+			if (!pool.length) return;
+			for (let i = pool.length - 1; i > 0; i--) {
+				const j = Math.floor(Math.random() * (i + 1));
+				[pool[i], pool[j]] = [pool[j], pool[i]];
+			}
+			setPicks(pool.slice(0, Math.min(3, pool.length)));
+		} finally {
+			setPicking(false);
+		}
+	}
 
 	const hasKey = !!config.kakaoRestKey.trim();
 	const hasCoords = !!config.lunchLat.trim() && !!config.lunchLng.trim();
@@ -64,11 +124,12 @@ export function LunchPane({
 				lat: config.lunchLat,
 				lng: config.lunchLng,
 				radius: config.lunchRadius || "1000",
-				size: 15,
+				size: 45,
 			});
 		} catch (e) {
 			r = { ok: false, error: String(e) };
 		}
+		setPicks([]);
 		if (!r || !r.ok) {
 			setState({
 				loading: false,
@@ -131,12 +192,81 @@ export function LunchPane({
 					<button
 						type="button"
 						className="btn btn-ghost"
+						title="여러 카테고리를 모아 무작위 3곳 뽑기(카페 제외)"
+						disabled={!hasKey || !hasCoords || picking}
+						onClick={pickRandom}
+					>
+						{picking ? "🎲 끑러는 중…" : "🎲 랜덤 3곳"}
+					</button>
+					<button
+						type="button"
+						className="btn btn-ghost"
 						title="새로고침 (⌘R / Ctrl+R / F5)"
 						onClick={() => load(query)}
 					>
 						↻ 새로고침
 					</button>
 				</div>
+
+				{/* 🎲 랜덤 추천 3곳 */}
+				{picks.length > 0 && (
+					<div className="tint-accent mb-3.5 rounded-[12px] p-[12px_14px]">
+						<div className="mb-2 flex items-center gap-2">
+							<span className="text-[14px] font-extrabold text-ink">
+								🎲 오늘의 랜덤 추천
+							</span>
+							<button
+								type="button"
+								className="cursor-pointer rounded-[6px] border-0 bg-panel-2 px-2.5 py-[3px] text-[11px] font-bold text-accent hover:underline disabled:opacity-50"
+								disabled={picking}
+								onClick={pickRandom}
+							>
+								{picking ? "끑러는 중…" : "다시 돌리기 ↻"}
+							</button>
+							<div className="flex-1" />
+							<button
+								type="button"
+								className="cursor-pointer border-0 bg-transparent p-0 text-[11px] text-ink-2 hover:underline"
+								onClick={() => setPicks([])}
+							>
+								닫기 ✕
+							</button>
+						</div>
+						<ol className="m-0 grid list-none grid-cols-1 gap-2.5 p-0 sm:grid-cols-3">
+							{picks.map((p, i) => (
+								<li
+									key={(p.placeUrl || p.name) + "pick" + i}
+									className="flex flex-col gap-[5px] rounded-[11px] border border-accent bg-panel p-[11px_13px]"
+								>
+									<div className="flex items-baseline justify-between gap-2">
+										<span className="text-[14px] font-extrabold text-ink">
+											{p.name}
+										</span>
+										{p.distance && (
+											<span className="whitespace-nowrap text-[12px] font-bold text-accent">
+												{fmtDist(p.distance)}
+											</span>
+										)}
+									</div>
+									{p.category && (
+										<span className="text-[12px] text-ink-2">{p.category}</span>
+									)}
+									{p.placeUrl && (
+										<button
+											type="button"
+											className="mt-1 cursor-pointer self-start rounded-[6px] border-0 bg-panel-2 px-2.5 py-[3px] text-[11px] font-bold text-accent hover:underline"
+											onClick={() =>
+												window.open(p.placeUrl, "_blank", "noopener")
+											}
+										>
+											카카오맵에서 보기 ⭐
+										</button>
+									)}
+								</li>
+							))}
+						</ol>
+					</div>
+				)}
 
 				{/* 검색어 + 종류 칩 */}
 				<div className="mb-3.5 flex flex-wrap items-center gap-2">
