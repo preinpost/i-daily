@@ -1,6 +1,7 @@
 // journal.ts — 일지 CRUD + config/tasks/shortcuts 를 Hono 네이티브 라우트로.
 // buildApp 이 app.route("/api", journalRoutes(backend)) 로 마운트한다.
-// 과거의 수제 if/else 라우터(route())를 대체 — 경로/메서드/파라미터를 Hono 가 매칭.
+// config(jiraBase/owner)는 요청별 미들웨어가 c.set("config") 로 담고(전역 아님 →
+// Worker 동시성 안전), 핸들러가 c.get("config") 로 읽어 렌더 함수에 인자로 넘긴다.
 import { Hono } from "hono";
 import type { Backend } from "../shared/backend.ts";
 import { SETUP_USER } from "../shared/backend.ts";
@@ -10,9 +11,8 @@ import {
 	serializeDoc,
 	carryNew,
 	dailyToBlock,
-	setConfig,
-	getConfig,
 	isConfigured,
+	type Config,
 	type Doc,
 	type ListItem,
 } from "../shared/model.ts";
@@ -20,20 +20,21 @@ import {
 // YYYY-MM-DD 만 매칭하는 date 파라미터(형식 불일치 URL 은 라우팅 자체가 안 됨 → notFound).
 const DATE = "/day/:date{\\d{4}-\\d{2}-\\d{2}}";
 
-export function journalRoutes(backend: Backend): Hono {
-	const store = backend.store;
-	const app = new Hono();
+type Vars = { config: Config };
 
-	// 요청마다 DB config 를 전역에 주입 — 순수 렌더러(ticketUrl/serializeDoc/dayResponse/emptyDoc)가
-	// getConfig() 로 읽는다. 이 미들웨어는 journal 라우트에만 적용(jira/lunch 는 config 불필요).
+export function journalRoutes(backend: Backend): Hono<{ Variables: Vars }> {
+	const store = backend.store;
+	const app = new Hono<{ Variables: Vars }>();
+
+	// 요청마다 DB config 를 Context 에 주입(요청별 격리). 렌더러는 c.get("config") 로 읽는다.
 	app.use("*", async (c, next) => {
-		setConfig(await backend.readConfig());
+		c.set("config", await backend.readConfig());
 		await next();
 	});
 
 	app
 		.get("/config", async (c) => {
-			const cfg = getConfig();
+			const cfg = c.get("config");
 			return c.json({
 				config: cfg,
 				configured: isConfigured(cfg),
@@ -43,12 +44,11 @@ export function journalRoutes(backend: Backend): Hono {
 		.put("/config", async (c) => {
 			const body = await c.req.json().catch(() => ({}));
 			const saved = await backend.writeConfig(body || {});
-			setConfig(saved);
 			return c.json({ config: saved, configured: isConfigured(saved) });
 		});
 
 	app.get("/days", async (c) => {
-		const cfg = getConfig();
+		const cfg = c.get("config");
 		return c.json({
 			days: await store.list(),
 			today: todayStr(),
@@ -92,21 +92,22 @@ export function journalRoutes(backend: Backend): Hono {
 			const date = c.req.param("date");
 			const d = await store.get(date);
 			return d
-				? c.json(dayResponse(d))
+				? c.json(dayResponse(c.get("config").jiraBase, d))
 				: c.json({ error: "not found", date }, 404);
 		})
 		.put(DATE, async (c) => {
+			const cfg = c.get("config");
 			const date = c.req.param("date");
 			const doc = (await c.req.json().catch(() => ({}))) as Doc;
 			doc.date = date;
-			doc.owner ??= getConfig().owner;
+			doc.owner ??= cfg.owner;
 			await store.put(date, doc);
-			return c.json(dayResponse(doc));
+			return c.json(dayResponse(cfg.jiraBase, doc));
 		});
 
 	app.get(`${DATE}/markdown`, async (c) => {
 		const d = await store.get(c.req.param("date"));
-		return c.text(d ? serializeDoc(d) : "");
+		return c.text(d ? serializeDoc(c.get("config").jiraBase, d) : "");
 	});
 
 	// prev-daily: 직전 근무일의 일일 진행 → 전일 스크럼 블록(block) + 가져오기용 items.
@@ -132,10 +133,11 @@ export function journalRoutes(backend: Backend): Hono {
 	});
 
 	app.post(`${DATE}/carry`, async (c) => {
+		const cfg = c.get("config");
 		const date = c.req.param("date");
-		const doc = await carryNew(store, date);
+		const doc = await carryNew(store, date, cfg.owner);
 		await store.put(date, doc);
-		return c.json(dayResponse(doc));
+		return c.json(dayResponse(cfg.jiraBase, doc));
 	});
 
 	return app;

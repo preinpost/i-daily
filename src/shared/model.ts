@@ -59,7 +59,7 @@ export interface Store {
 
 // ───────────────────────── 설정 (config) — 회사/개인 값은 DB config에서 주입 ─────────────────────────
 // 하드코딩된 회사 정보 제거 → 최초 실행 시 설정 페이지에서 등록, DB(settings 테이블)에 저장.
-// journal 미들웨어가 요청마다 DB config를 읽어 setConfig()로 주입하고, 순수 렌더러들은 getConfig()를 읽는다.
+// config(jiraBase/owner)는 전역이 아니라 렌더 함수에 인자로 전달한다(요청별 격리, Worker 동시성 안전).
 // renderer(브라우저)에도 공유되므로 process 가 없을 수 있다.
 const env = (k: string, d: string): string =>
 	(globalThis as { process?: { env?: Record<string, string | undefined> } })
@@ -104,21 +104,13 @@ export function mergeConfig(stored?: Partial<Config> | null): Config {
 	};
 }
 
-let _cfg: Config = mergeConfig(null);
-export function setConfig(stored?: Partial<Config> | null): Config {
-	_cfg = mergeConfig(stored);
-	return _cfg;
-}
-export function getConfig(): Config {
-	return _cfg;
-}
 // 최소 설정 완료 여부 — 최초 실행 시 설정 페이지로 유도할 판단 기준.
-export function isConfigured(c: Config = _cfg): boolean {
+export function isConfigured(c: Config): boolean {
 	return Boolean(c.owner.trim() && c.jiraBase.trim());
 }
 // 티켓 키 → Jira URL. jiraBase는 host까지만 받고 `/browse/`는 자동(이미 포함되면 그대로). 미설정이면 빈 문자열.
-export function ticketUrl(key: string): string {
-	const base = (getConfig().jiraBase || "").trim().replace(/\/+$/, "");
+export function ticketUrl(jiraBase: string, key: string): string {
+	const base = (jiraBase || "").trim().replace(/\/+$/, "");
 	if (!base) return "";
 	const path = /\/browse$/i.test(base) ? base : base + "/browse";
 	return `${path}/${(key || "").trim()}`;
@@ -135,9 +127,9 @@ export const emptyScrum = (): Scrum => ({
 	prev: emptyBlock(),
 	today: emptyBlock(),
 });
-export const emptyDoc = (date: string): Doc => ({
+export const emptyDoc = (date: string, owner = ""): Doc => ({
 	date,
-	owner: getConfig().owner,
+	owner,
 	preamble: "",
 	sections: [
 		{ title: "일일 진행 업무", kind: "list", items: [] },
@@ -180,18 +172,18 @@ export function taskMeta(t: Task): string {
 	return fmtMeta(t.progress, t.due);
 }
 // 티켓 링크 머리(마크다운). 키 없으면 설명만.
-function mdHead(key: string, desc: string): string {
+function mdHead(jiraBase: string, key: string, desc: string): string {
 	if (!key) return desc;
-	const url = ticketUrl(key);
+	const url = ticketUrl(jiraBase, key);
 	const link = url ? `[${key}](${url})` : `[${key}]`;
 	return link + (desc ? ` ${desc}` : "");
 }
-export function taskLine(t: Task): string {
+export function taskLine(jiraBase: string, t: Task): string {
 	const meta = taskMeta(t);
 	const desc = (t.desc || "").trim();
 	const key = (t.key || "").trim();
 	if (key) {
-		const url = ticketUrl(key);
+		const url = ticketUrl(jiraBase, key);
 		const link = url ? `[${key}](${url})` : `[${key}]`;
 		return `    + ${link}` + (desc ? ` ${desc}` : "") + meta;
 	}
@@ -205,29 +197,29 @@ function spaceHasContent(sp: Space): boolean {
 	);
 }
 // 스페이스 한 개 → 마크다운 라인들.
-function fmtSpaceLines(sp: Space): string[] {
+function fmtSpaceLines(jiraBase: string, sp: Space): string[] {
 	const lines = [`  + **[${sp.label || "?"}]**`];
 	for (const t of sp.tasks ?? []) {
 		if (!(t.key || t.desc)) continue;
-		lines.push(taskLine(t));
+		lines.push(taskLine(jiraBase, t));
 		for (const s of t.subs ?? [])
 			if (s.trim()) lines.push("        + " + s.trim());
 	}
 	return lines;
 }
-export function fmtBlock(title: string, b: Block): string {
+export function fmtBlock(jiraBase: string, title: string, b: Block): string {
 	const L = [`**[${title}]**`, "- 업무 계획"];
 	for (const sp of b.spaces ?? [])
-		if (spaceHasContent(sp)) L.push(...fmtSpaceLines(sp));
+		if (spaceHasContent(sp)) L.push(...fmtSpaceLines(jiraBase, sp));
 	L.push("- 이슈 사항: " + ((b.issues || "").trim() || "없음"));
 	L.push("- 협업 및 기타: " + ((b.collab || "").trim() || "없음"));
 	return L.join("\n");
 }
-export function renderScrum(s: Scrum): string {
+export function renderScrum(jiraBase: string, s: Scrum): string {
 	return (
-		fmtBlock("전일 진행 업무", s.prev) +
+		fmtBlock(jiraBase, "전일 진행 업무", s.prev) +
 		"\n\n" +
-		fmtBlock("금일 진행 업무", s.today)
+		fmtBlock(jiraBase, "금일 진행 업무", s.today)
 	);
 }
 
@@ -239,13 +231,13 @@ export function esc(x: string): string {
 		.replace(/>/g, "&gt;");
 }
 // 태스크 머리(HTML). escDesc/escMeta는 이미 escape된 값.
-function htmlHead(key: string, escDesc: string, escMeta: string): string {
+function htmlHead(jiraBase: string, key: string, escDesc: string, escMeta: string): string {
 	if (!key) return (escDesc || "(내용)") + escMeta;
-	const url = ticketUrl(key);
+	const url = ticketUrl(jiraBase, key);
 	const anchor = url ? `<a href="${url}">[${esc(key)}]</a>` : `[${esc(key)}]`;
 	return anchor + (escDesc ? ` ${escDesc}` : "") + escMeta;
 }
-export function taskHtml(t: Task): string {
+export function taskHtml(jiraBase: string, t: Task): string {
 	const meta = esc(taskMeta(t));
 	const desc = esc((t.desc || "").trim());
 	const key = (t.key || "").trim();
@@ -253,14 +245,14 @@ export function taskHtml(t: Task): string {
 	const subHtml = subs.length
 		? `<ul>${subs.map((s) => `<li>${esc(s.trim())}</li>`).join("")}</ul>`
 		: "";
-	return `<li>${htmlHead(key, desc, meta)}${subHtml}</li>`;
+	return `<li>${htmlHead(jiraBase, key, desc, meta)}${subHtml}</li>`;
 }
-export function blockHtml(title: string, b: Block): string {
+export function blockHtml(jiraBase: string, title: string, b: Block): string {
 	let inner = "";
 	for (const sp of b.spaces ?? []) {
 		if (!spaceHasContent(sp)) continue;
 		const rows = (sp.tasks ?? [])
-			.flatMap((t) => (t.key || t.desc ? [taskHtml(t)] : []))
+			.flatMap((t) => (t.key || t.desc ? [taskHtml(jiraBase, t)] : []))
 			.join("");
 		inner += `<li><b>[${esc(sp.label || "?")}]</b><ul>${rows}</ul></li>`;
 	}
@@ -272,20 +264,21 @@ export function blockHtml(title: string, b: Block): string {
 		`</ul>`
 	);
 }
-export function renderScrumHtml(s: Scrum): string {
+export function renderScrumHtml(jiraBase: string, s: Scrum): string {
 	return (
-		blockHtml("전일 진행 업무", s.prev) + blockHtml("금일 진행 업무", s.today)
+		blockHtml(jiraBase, "전일 진행 업무", s.prev) +
+		blockHtml(jiraBase, "금일 진행 업무", s.today)
 	);
 }
 
 // ───────────────────────── 체크리스트 렌더러/파서 (일일 진행 업무) ─────────────────────────
-export function renderList(items: ListItem[]): string {
+export function renderList(jiraBase: string, items: ListItem[]): string {
 	const L: string[] = [];
 	for (const it of items ?? []) {
 		const key = (it.key || "").trim();
 		const desc = (it.desc || "").trim();
 		if (!key && !desc) continue;
-		L.push(`- ${mdHead(key, desc)}${fmtMeta(it.progress, it.due)}`);
+		L.push(`- ${mdHead(jiraBase, key, desc)}${fmtMeta(it.progress, it.due)}`);
 		for (const s of it.subs ?? []) if (s.trim()) L.push("    - " + s.trim());
 	}
 	return L.join("\n");
@@ -443,7 +436,7 @@ export function kindOf(title: string): "scrum" | "list" | "raw" {
 	if (title.replace(/\s/g, "") === "일일진행업무") return "list";
 	return "raw";
 }
-export function parseDoc(text: string, date: string): Doc {
+export function parseDoc(text: string, date: string, owner = ""): Doc {
 	const year = Number(date.slice(0, 4)) || new Date().getFullYear();
 	const raw: { title: string; body: string }[] = [];
 	let preamble = "";
@@ -465,7 +458,7 @@ export function parseDoc(text: string, date: string): Doc {
 	flush();
 	const doc: Doc = {
 		date,
-		owner: getConfig().owner,
+		owner,
 		preamble: preamble.trim(),
 		sections: [],
 		scrum: emptyScrum(),
@@ -488,28 +481,32 @@ export function parseDoc(text: string, date: string): Doc {
 	return doc;
 }
 // 섹션 한 개 → 본문 마크다운.
-function sectionBody(doc: Doc, s: Section): string {
-	if (s.kind === "scrum") return renderScrum(doc.scrum);
-	if (s.kind === "list") return renderList(s.items);
+function sectionBody(jiraBase: string, doc: Doc, s: Section): string {
+	if (s.kind === "scrum") return renderScrum(jiraBase, doc.scrum);
+	if (s.kind === "list") return renderList(jiraBase, s.items);
 	return (s.body || "").replace(/\s+$/, "");
 }
-export function serializeDoc(doc: Doc): string {
+export function serializeDoc(jiraBase: string, doc: Doc): string {
 	const parts: string[] = [];
 	if (doc.preamble) parts.push(doc.preamble.trim());
 	for (const s of doc.sections) {
-		parts.push(`## ${s.title}\n\n${sectionBody(doc, s)}`.replace(/\s+$/, ""));
+		parts.push(`## ${s.title}\n\n${sectionBody(jiraBase, doc, s)}`.replace(/\s+$/, ""));
 	}
 	return parts.join("\n\n") + "\n";
 }
 
-export const dayResponse = (doc: Doc) => ({
+export const dayResponse = (jiraBase: string, doc: Doc) => ({
 	data: doc,
-	teams: renderScrum(doc.scrum),
-	teamsHtml: renderScrumHtml(doc.scrum),
+	teams: renderScrum(jiraBase, doc.scrum),
+	teamsHtml: renderScrumHtml(jiraBase, doc.scrum),
 });
 
-export async function carryNew(store: Store, date: string): Promise<Doc> {
-	const doc = emptyDoc(date);
+export async function carryNew(
+	store: Store,
+	date: string,
+	owner = "",
+): Promise<Doc> {
+	const doc = emptyDoc(date, owner);
 	const dates = await store.list();
 	const earlier = dates.filter((d) => d < date);
 	const prev = earlier.at(-1) ?? null;

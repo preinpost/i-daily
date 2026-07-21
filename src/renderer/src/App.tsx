@@ -196,7 +196,7 @@ export function App() {
 	async function copyMd() {
 		const doc = docRef.current;
 		if (!doc) return toast("복사할 내용이 없어요");
-		const md = serializeDoc(doc);
+		const md = serializeDoc(config.jiraBase, doc);
 		try {
 			await navigator.clipboard.writeText(md);
 			toast("마크다운 복사됨 — 옵시디언 일지에 붙여넣기");
