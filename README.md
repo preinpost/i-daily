@@ -51,6 +51,36 @@ npm run deploy     # Cloudflare Workers 배포(빌드 포함)
 - 배포 대상: `https://i-daily.<your-subdomain>.workers.dev` (Workers + D1 + Assets).
 - 스키마 변경: `npm run db:generate` → `npm run db:migrate:remote`.
 
+### GitHub Actions (`.github/workflows/release.yml`)
+
+semver bump → tag → D1 마이그레이션(remote) → `wrangler deploy` → GitHub Release 생성까지 자동화. `Actions → Release → Run workflow`로 수동 실행(bump: patch/minor/major).
+
+Repo Settings → Secrets and variables → Actions 에 아래 2개를 등록해야 한다:
+
+| Secret | 값 | 확인 방법 |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Custom Token | 아래 "Cloudflare API 토큰 발급" 참고 |
+| `CLOUDFLARE_ACCOUNT_ID` | 계정 ID | `npx wrangler whoami` 출력의 Account ID 컬럼 |
+
+```sh
+gh secret set CLOUDFLARE_API_TOKEN --repo preinpost/i-daily
+gh secret set CLOUDFLARE_ACCOUNT_ID --repo preinpost/i-daily
+```
+
+#### Cloudflare API 토큰 발급
+
+<https://dash.cloudflare.com/profile/api-tokens> → **Create Token → Create Custom Token**
+
+- Permissions: `Account` → `D1` → `Edit`, `Account` → `Workers Scripts` → `Edit`
+  (선택: `Account` → `Account Settings` → `Read`, `User` → `User Details` → `Read`)
+- Account Resources: **Include → 배포할 특정 계정 하나만 선택** — `All accounts`는 D1 쿼리 API에서
+  `Authentication error [code: 10000]`로 거부되는 경우가 있었음(계정 스코프가 특정 D1 리소스에
+  제대로 안 붙는 것으로 추정). 반드시 계정을 명시적으로 선택할 것.
+- Zone Resources: 커스텀 도메인/라우트 안 쓰면 없어도 무방.
+
+`CLOUDFLARE_ACCOUNT_ID`를 잘못 넣어도 토큰 권한이 맞더라도 동일한 10000 에러가 난다 — 둘 다
+`wrangler whoami` 결과와 정확히 일치하는지 먼저 확인.
+
 ## 테스트 / 타입체크
 
 ```sh
@@ -126,9 +156,12 @@ DB 는 Cloudflare D1(SQLite)다. 스키마의 진실 원천은 `src/shared/schem
 Jira 연동(=로그인)에 필요한 OAuth 2.0 (3LO) 클라이언트 `client_id`/`client_secret`은 **user 설정이 아닌 서버 전역 secret**이다. settings(JSON)가 아닌 env 에서만 읽는다 — 과거 settings 에 두면 `GET /api/days` 응답으로 브라우저에 secret 이 유출된다.
 
 - 로컬 dev: `.dev.vars` 에 `JIRA_CLIENT_ID` / `JIRA_CLIENT_SECRET` (`wrangler dev` 가 읽는다). 예시는 `.dev.vars.example`.
-- 배포: `wrangler secret put JIRA_CLIENT_ID` / `wrangler secret put JIRA_CLIENT_SECRET`.
+- 배포: `npx wrangler secret put JIRA_CLIENT_ID` / `npx wrangler secret put JIRA_CLIENT_SECRET` (값 붙여넣고 엔터).
+  **`wrangler deploy` 재실행 불필요** — secret put 은 이미 배포된 Worker에 즉시 반영된다.
+- 등록 확인: `npx wrangler secret list` (값은 안 보여주고 이름만 나온다).
 - Atlassian 앱의 **Callback URL**: `https://i-daily.<your-subdomain>.workers.dev/api/jira/callback` (로컬 dev: `http://127.0.0.1:8787/api/jira/callback`).
 - 기타 env: `JIRA_REDIRECT_URI`(콜백 URL 고정, 미설정 시 요청 오리진 사용).
+- 미설정 시 로그인 페이지에 "서버에 Jira OAuth 클라이언트가 설정되지 않았습니다" 경고가 뜨고 로그인 버튼이 비활성화된다(정상 동작). 둘 등록하면 새로고침만으로 사라진다.
 
 ### 카카오 REST API 키 (서버 전역 secret)
 
