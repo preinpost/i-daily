@@ -18,6 +18,7 @@ import {
 	type ListItem,
 } from "./model.ts";
 import type { Backend } from "./backend.ts";
+import { SETUP_USER } from "./backend.ts";
 import { sqliteBackend } from "./store.ts";
 
 export type ApiResult = { status: number; body: any };
@@ -67,6 +68,7 @@ export async function routeWith(
 			days: await store.list(),
 			today: todayStr(),
 			user,
+			isSetup: user === SETUP_USER, // 미로그인(세션 없음) → 전체화면 로그인 게이트
 			owner: cfg.owner,
 			jiraBase: cfg.jiraBase,
 			config: cfg,

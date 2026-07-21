@@ -337,11 +337,8 @@ export function normCfg(c?: Partial<Config> | null): Config {
 	return {
 		owner: s.owner || "",
 		jiraBase: s.jiraBase || "",
-		jiraClientId: s.jiraClientId || "",
-		jiraClientSecret: s.jiraClientSecret || "",
 		reportAgent: s.reportAgent || "",
 		reportPrompt: s.reportPrompt || "",
-		kakaoRestKey: s.kakaoRestKey || "",
 		lunchLat: s.lunchLat || "",
 		lunchLng: s.lunchLng || "",
 		lunchRadius: s.lunchRadius || "1000",

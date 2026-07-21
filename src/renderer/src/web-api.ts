@@ -41,8 +41,15 @@ async function post(path: string, body?: unknown): Promise<any> {
 }
 
 // Atlassian 인가 URL 만 신뢰(window.open open-redirect 방지).
-const isAtlassianAuthorize = (u: string): boolean =>
-	/^https:\/\/auth\.atlassian\.com\//.test(u);
+// 정규식 대신 URL 호스트 비교 — 검증 의도가 정적 분석에도 드러난다.
+const isAtlassianAuthorize = (u: string): boolean => {
+	try {
+		const x = new URL(u);
+		return x.protocol === "https:" && x.hostname === "auth.atlassian.com";
+	} catch {
+		return false;
+	}
+};
 
 // 자동업데이트(update.*) 는 웹에 없음 → no-op 스텁. 컴포넌트가 옵셔널 체이닝으로 호출해도 안전.
 const noop = () => {};
@@ -66,6 +73,8 @@ export const webApi: Api = {
 			// 인가 URL 이 오면 새 창으로 열어 OAuth 진행. 콜백이 서버에서 토큰을 저장한다.
 			// authorizeUrl 은 서버가 Atlassian 인가 URL 로 생성(신뢰). 호스트 검증으로 open-redirect 방지.
 			if (r && r.ok && r.authorizeUrl && isAtlassianAuthorize(r.authorizeUrl)) {
+				// isAtlassianAuthorize 로 https://auth.atlassian.com 호스트 검증后 open — open-redirect 아님.
+				// pi-lens-ignore: no-open-redirect
 				window.open(r.authorizeUrl, "jira-oauth", "width=600,height=700");
 			}
 			return r;
@@ -73,6 +82,7 @@ export const webApi: Api = {
 		logout: () => post("/api/jira/logout"),
 		tickets: () => get("/api/jira/tickets"),
 	},
+	me: () => get("/api/me"),
 	agent: {
 		scan: () => get("/api/agent/scan"),
 		generate: (opts?: unknown) => post("/api/agent/generate", opts),

@@ -48,7 +48,7 @@ npm run build      # Vite → dist/web (SPA)
 npm run deploy     # Cloudflare Workers 배포(빌드 포함)
 ```
 
-- 배포 대상: `https://i-daily.letomok.workers.dev` (Workers + D1 + Assets).
+- 배포 대상: `https://i-daily.<your-subdomain>.workers.dev` (Workers + D1 + Assets).
 - 스키마 변경: `npm run db:generate` → `npm run db:migrate:remote`.
 
 ## 테스트 / 타입체크
@@ -66,11 +66,11 @@ npm run typecheck
 src/
   worker/index.ts        Cloudflare Workers 엔트리: env.DB(D1) → Drizzle → d1Backend → Hono. /api/* 처리, 정적은 assets 위임.
   server/app.ts          Hono 앱: 도메인 라우트(jira/lunch/agent) + 일지 CRUD catch-all(routeWith).
-  server/jira.ts         Jira OAuth 2.0 (3LO) + REST — 서버 라우트 콜백(/api/jira/callback).
+  server/jira.ts         Atlassian OAuth 2.0(3LO) + REST + 로그인(=연결) — /api/jira/callback 에서 /me 로 account_id 를 받아 세션 발급.
   server/lunch.ts        점심 탭 카카오 로컬 검색(fetch).
   server/agent.ts        주간보고 결정적 집계(Workers는 CLI spawn 불가 → 에이전트 비활성화).
   shared/backend.ts      Backend seam — route()가 DB 드라이버를 추상화한 인터페이스.
-  shared/schema.ts       Drizzle 스키마 = 진실의 원천(9테이블 + task_rows 뷰).
+  shared/schema.ts       Drizzle 스키마 = 진실의 원천(11테이블 + task_rows 뷰: oauth_states/sessions 포함).
   shared/store-drizzle.ts D1용 스토어(Drizzle, batch). store.ts(better-sqlite3)와 동일 진실.
   shared/store.ts        better-sqlite3 스토어 + sqliteBackend — 테스트 전용(devDep).
   shared/api.ts          route() → routeWith(backend): 전송·DB 드라이버 무관 라우팅.
@@ -102,9 +102,11 @@ DB 는 Cloudflare D1(SQLite)다. 스키마의 진실 원천은 `src/shared/schem
 - `list_items(user, date, pos, done, jkey, descr, progress, due, subs_json)` — 일일 진행 업무.
 - `shortcuts(user, pos, name, url)` — 바로가기.
 - `settings(user, json)` · `jira_auth(user, json)` — user별 config / Jira OAuth 토큰.
+- `oauth_states(state, payload, created_at)` — OAuth `state`(CSRF) 단기 저장(TTL 5분). Workers 멀티인스턴스 대응.
+- `sessions(sid, user, created_at, expires_at)` — 로그인 세션. httpOnly `sid` 쿠키 → user(account_id).
 - `task_rows` (VIEW) — 스크럼 태스크 + 일일 항목을 `(date, side, space, jkey, descr, progress, due)`로 평탄화(빈 행 제외). side ∈ prev | today | daily.
 
-스키마는 모든 테이블의 PK가 `(user, ...)`로 시작 → DB 재설계 없이 멀티유저 지원 구조. 현재는 `user="local"` 상수(PoC).
+스키마는 모든 테이블의 PK가 `(user, ...)`로 시작 → DB 재설계 없이 멀티유저 지원 구조. user 는 세션(account_id)에서 주입되며, 미로그인 시 `SETUP("setup")` 센텬넬( OAuth 클라이언트 config 보관).
 
 ## 설정 (⚙️ 설정 탭 → DB 저장)
 
@@ -118,15 +120,31 @@ DB 는 Cloudflare D1(SQLite)다. 스키마의 진실 원천은 `src/shared/schem
 - 스페이스 입력 자동완성은 설정이 아니라 **과거 일지에 쓴 라벨**을 학습한다 (`GET /api/spaces`, 최근 사용순).
 - API: `GET/PUT /api/config`.
 - 미설정 값은 환경변수(`OWNER` · `JIRA_BASE`)로 초기값만 주입할 수 있다(공개 배포 시 비운다).
-- 기타 env: `JIRA_REDIRECT_URI`(Jira OAuth 콜백 URL, 미설정 시 요청 오리진 사용).
+
+### Jira OAuth 클라이언트 (서버 전역 secret)
+
+Jira 연동(=로그인)에 필요한 OAuth 2.0 (3LO) 클라이언트 `client_id`/`client_secret`은 **user 설정이 아닌 서버 전역 secret**이다. settings(JSON)가 아닌 env 에서만 읽는다 — 과거 settings 에 두면 `GET /api/days` 응답으로 브라우저에 secret 이 유출된다.
+
+- 로컬 dev: `.dev.vars` 에 `JIRA_CLIENT_ID` / `JIRA_CLIENT_SECRET` (`wrangler dev` 가 읽는다). 예시는 `.dev.vars.example`.
+- 배포: `wrangler secret put JIRA_CLIENT_ID` / `wrangler secret put JIRA_CLIENT_SECRET`.
+- Atlassian 앱의 **Callback URL**: `https://i-daily.<your-subdomain>.workers.dev/api/jira/callback` (로컬 dev: `http://127.0.0.1:8787/api/jira/callback`).
+- 기타 env: `JIRA_REDIRECT_URI`(콜백 URL 고정, 미설정 시 요청 오리진 사용).
+
+### 카카오 REST API 키 (서버 전역 secret)
+
+점심 탭 맛집 검색(카카오 로컬 API)에 쓰는 REST 키도 동일하게 **서버 전역 secret**이다(user 설정 아님). 사무실 좌표(`lunchLat`/`lunchLng`/`lunchRadius`)만 user 설정으로 남는다 — 사무실마다 다를 수 있으므로.
+
+- 로컬 dev: `.dev.vars` 에 `KAKAO_REST_KEY`. 예시는 `.dev.vars.example`.
+- 배포: `wrangler secret put KAKAO_REST_KEY`.
+- 발급: developers.kakao.com/console/my-app → 내 앱 → 플랫폼 **Web** 추가 → 사이트 도메인 등록 후 REST API 키.
 
 ## TODO — 남은 작업
 
 웹 전환은 완료했고, 다음은 정식 사용을 위한 남은 항목들이다.
 
-- [ ] **Atlassian OAuth 로그인** — 현재 `user="local"` 상수. `read:me` 스코프로 account_id 를 받아 세션에 저장 → `user` 주입. Jira 연결 토큰과 동일 OAuth 흐름 재용. 멀티유저 전환의 핵심.
-- [ ] **Jira OAuth state 저장소** — `server/jira.ts`의 `_pending` 이 in-memory. Workers 는 무상태/격리 인스턴스라 멀티 인스턴스에선 state 를 D1/KV/쿠키에 저장해야 한다.
-- [ ] **Jira redirect URI 등록** — Atlassian 개발자 콘솔에 `https://i-daily.letomok.workers.dev/api/jira/callback` 등록 필요(현재는 인가 URL 생성까지만 검증).
+- [x] **Atlassian OAuth 로그인 (= Jira 연결)** — 1클릭 흐름: 연결 버튼 = 로그인. `read:me`로 account_id 를 받아 `sessions` 표(httpOnly `sid` 쿠키)에 저장 → `user` 주입. 미로그인은 `SETUP("setup")` 센텬넬 유저로 OAuth 클라이언트 config 보관, 첫 로그인 즉시 account_id 로 이관. 멀티유저 전환 기반. **와료**(redirect URI 콘솔 등록후 실사용 가능).
+- [x] **Jira OAuth state 저장소** — `server/jira.ts`의 `_pending` (in-memory) 폐지 → `oauth_states` D1 표. Workers 멀티인스턴스에서도 connect/callback 이 다른 isolate 에 떨어져 동작. TTL 5분.
+- [ ] **Jira redirect URI 등록** — Atlassian 개발자 콘솔에 `https://i-daily.<your-subdomain>.workers.dev/api/jira/callback` 등록 필요(코드는 완료, 콘솔 등록만 남음).
 - [ ] **에이전트 CLI 연동** — Workers 는 로컬 프로세스 spawn 불가 → 주간보고 `useAgent` 비활성화(결정적 집계만). 별도 서비스/서버리스 함수로 분리하거나 브라우저 측 에이전트 호출 경로 검토.
 - [ ] **자동업데이트** — 웹은 새로고침이 곧 업데이트. `useAutoUpdate` 훅의 update.* 스텁을 제거하거나 "새로고침" 안내로 교체.
 - [ ] **better-sqlite3 제거** — 현재 테스트 전용 devDep 으로 잔존(빠른 in-memory 테스트). D1 기반 테스트(로컬 wrangler D1)로 전환하면 완전 제거 가능.

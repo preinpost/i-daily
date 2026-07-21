@@ -9,6 +9,9 @@ dist/
 .wrangler/
 worker-configuration.d.ts
 
+# 로컬 Workers secrets (wrangler dev 가 읽는 env) — 실제 자격은 커밋 금지
+.dev.vars
+
 # sqlite db (진실 데이터 — 코드 아님)
 *.db
 *.db-*

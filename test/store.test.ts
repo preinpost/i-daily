@@ -7,7 +7,17 @@ import {
 	readJiraAuth,
 	writeJiraAuth,
 	clearJiraAuth,
+	writeOauthState,
+	consumeOauthState,
+	writeSession,
+	readSession,
+	deleteSession,
+	hasConfig,
+	readConfig,
+	writeConfig,
+	migrateConfig,
 } from "../src/shared/store.ts";
+import { SETUP_USER } from "../src/shared/backend.ts";
 import { parseDoc } from "../src/shared/model.ts";
 
 const freshDb = () => createDb(); // 스키마는 store.ts SCHEMA와 동일(진실 테이블 + task_rows 뷰)
@@ -128,4 +138,66 @@ test("jira_auth 왕복 + 유저 격리 + clear", () => {
 	expect(readJiraAuth(db, "u1")!.accessToken).toBe("at2");
 	clearJiraAuth(db, "u1");
 	expect(readJiraAuth(db, "u1")).toBe(null);
+});
+
+test("oauth_states 왕복 + TTL 만료 + 회수后 삭제", () => {
+	const db = freshDb();
+	expect(consumeOauthState(db, "none")).toBe(null); // 미등록
+	const now = Date.now();
+	writeOauthState(db, "s1", {
+		redirectUri: "https://x/callback",
+		fromUser: SETUP_USER,
+		createdAt: now,
+	});
+	expect(consumeOauthState(db, "other")).toBe(null); // 다른 state
+	const got = consumeOauthState(db, "s1");
+	expect(got).toEqual({
+		redirectUri: "https://x/callback",
+		fromUser: SETUP_USER,
+		createdAt: now,
+	});
+	expect(consumeOauthState(db, "s1")).toBe(null); // 회수后 재조회 불가(삭제)
+
+	// 만료(TTL 초과) → null. createdAt 을 과거로 덮어쓰기 위해 직접 삽입.
+	db.prepare(
+		"INSERT INTO oauth_states(state,payload,created_at) VALUES(?, ?, ?)",
+	).run("s2", "{}", new Date(now - 6 * 60_000).toISOString());
+	expect(consumeOauthState(db, "s2", 5 * 60_000)).toBe(null);
+});
+
+test("sessions 왕복 + 만료 + delete", () => {
+	const db = freshDb();
+	const future = Date.now() + 86_400_000;
+	writeSession(db, "sid1", "acct-1", future);
+	expect(readSession(db, "sid1")?.user).toBe("acct-1");
+	expect(readSession(db, "other")).toBe(null);
+	deleteSession(db, "sid1");
+	expect(readSession(db, "sid1")).toBe(null);
+
+	// 만료 세션은 null
+	writeSession(db, "sid2", "acct-2", Date.now() - 1000);
+	expect(readSession(db, "sid2")).toBe(null);
+});
+
+test("migrateConfig: setup → account_id 복사(1회) + 재호출 no-op", () => {
+	const db = freshDb();
+	expect(hasConfig(db, SETUP_USER)).toBe(false);
+	writeConfig(db, SETUP_USER, {
+		owner: "홍길동",
+		jiraBase: "https://x.atlassian.net",
+	});
+	expect(hasConfig(db, SETUP_USER)).toBe(true);
+
+	const acct = "5e8b...account-id";
+	expect(hasConfig(db, acct)).toBe(false);
+	migrateConfig(db, SETUP_USER, acct); // 첫 로그인 복사
+	expect(hasConfig(db, acct)).toBe(true);
+	expect(readConfig(db, acct).owner).toBe("홍길동");
+	expect(readConfig(db, acct).jiraBase).toBe("https://x.atlassian.net");
+	expect(readConfig(db, SETUP_USER).owner).toBe("홍길동"); // 원본 유지
+
+	// account_id 에 이미 설정 있으면(재연결) no-op — 덮어쓰지 않음.
+	writeConfig(db, SETUP_USER, { owner: "바뀐이름" });
+	migrateConfig(db, SETUP_USER, acct);
+	expect(readConfig(db, acct).owner).toBe("홍길동");
 });

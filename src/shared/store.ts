@@ -67,6 +67,16 @@ CREATE TABLE IF NOT EXISTS jira_auth (
   user TEXT NOT NULL, json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (user)
 );
+-- oauth_states: OAuth state(CSRF) 단기 저장 — Workers 멀티인스턴스 대응(in-memory 대체).
+CREATE TABLE IF NOT EXISTS oauth_states (
+  state TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+  PRIMARY KEY (state)
+);
+-- sessions: 로그인 세션(sid 쿠키 → user). D1 저장.
+CREATE TABLE IF NOT EXISTS sessions (
+  sid TEXT NOT NULL, user TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+  PRIMARY KEY (sid)
+);
 CREATE INDEX IF NOT EXISTS idx_tasks_ud ON tasks(user, date);
 CREATE INDEX IF NOT EXISTS idx_tasks_key ON tasks(jkey);
 CREATE INDEX IF NOT EXISTS idx_items_ud ON list_items(user, date);
@@ -231,6 +241,15 @@ export function hasConfig(db: DB, user: string): boolean {
 	);
 }
 
+/**
+ * 첫 로그인 마이그레이션: fromUser(=setup) 의 config 를 toUser(=account_id) 로 복사.
+ * toUser 에 이미 설정이 있으면(재연결 등) no-op. fromUser 행은 남짐(OAuth 클라이언트 config 공유).
+ */
+export function migrateConfig(db: DB, fromUser: string, toUser: string): void {
+	if (fromUser === toUser || hasConfig(db, toUser)) return;
+	writeConfig(db, toUser, readConfig(db, fromUser));
+}
+
 // ───────────────────────── jira_auth (OAuth 토큰, user별 JSON 한 행) ─────────────────────────
 // Config/settings 와 분리 — GET /api/config 로 렌더러에 유출되지 않게 한다.
 export type JiraAuth = {
@@ -271,6 +290,89 @@ export function writeJiraAuth(db: DB, user: string, auth: JiraAuth): void {
 
 export function clearJiraAuth(db: DB, user: string): void {
 	db.prepare("DELETE FROM jira_auth WHERE user=?").run(user);
+}
+
+// ───────────────────────── oauth_states (OAuth state CSRF, 단기) ─────────────────────────
+// Workers 멀티인스턴스 환경에서 connect 요청과 callback 요청이 다른 isolate 에 떨어져도
+// 동작하도록 state 를 D1/SQLite 에 persist. TTL ~5분 후 만료(조회 시 판정).
+export type OauthStatePayload = {
+	redirectUri: string;
+	fromUser: string; // connect 시작 시 user(첫 로그인: setup / 재연결: account_id)
+	createdAt: number; // epoch ms
+};
+
+export function writeOauthState(
+	db: DB,
+	state: string,
+	p: OauthStatePayload,
+): void {
+	db.prepare(
+		"INSERT INTO oauth_states(state,payload,created_at) VALUES(?,?,?)",
+	).run(state, JSON.stringify(p), new Date(p.createdAt).toISOString());
+}
+
+/** state 로 조회 후 삭제(원히 회수). 만료(~5min)시 null. 반환된 payload 는 connect 시 그것. */
+export function consumeOauthState(
+	db: DB,
+	state: string,
+	ttlMs = 5 * 60 * 1000,
+): OauthStatePayload | null {
+	const row = db
+		.prepare("SELECT payload, created_at FROM oauth_states WHERE state=?")
+		.get(state) as { payload: string; created_at: string } | undefined;
+	db.prepare("DELETE FROM oauth_states WHERE state=?").run(state);
+	if (!row) return null;
+	try {
+		const p = JSON.parse(row.payload) as Partial<OauthStatePayload>;
+		const createdAt = Date.parse(row.created_at);
+		if (!p.redirectUri || !p.fromUser || !createdAt) return null;
+		if (Date.now() - createdAt > ttlMs) return null;
+		return {
+			redirectUri: String(p.redirectUri),
+			fromUser: String(p.fromUser),
+			createdAt,
+		};
+	} catch {
+		return null;
+	}
+}
+
+// ───────────────────────── sessions (로그인 세션) ─────────────────────────
+// httpOnly sid 쿠키 → user(account_id). Workers 무상습 대응(D1 persist).
+export type Session = {
+	sid: string;
+	user: string;
+	expiresAt: number; // epoch ms
+};
+
+export function writeSession(
+	db: DB,
+	sid: string,
+	user: string,
+	expiresAt: number,
+): void {
+	db.prepare(
+		"INSERT INTO sessions(sid,user,created_at,expires_at) VALUES(?,?,?,?)",
+	).run(sid, user, new Date().toISOString(), new Date(expiresAt).toISOString());
+}
+
+/** sid 로 세션 조회. 만료 시 null(삭제는 호출쪽에서 원하면 처리). */
+export function readSession(
+	db: DB,
+	sid: string,
+	now = Date.now(),
+): Session | null {
+	const row = db
+		.prepare("SELECT sid,user,expires_at FROM sessions WHERE sid=?")
+		.get(sid) as { sid: string; user: string; expires_at: string } | undefined;
+	if (!row) return null;
+	const expiresAt = Date.parse(row.expires_at);
+	if (!expiresAt || expiresAt <= now) return null;
+	return { sid: row.sid, user: row.user, expiresAt };
+}
+
+export function deleteSession(db: DB, sid: string): void {
+	db.prepare("DELETE FROM sessions WHERE sid=?").run(sid);
 }
 
 function readShortcuts(db: DB, user: string): Shortcut[] {

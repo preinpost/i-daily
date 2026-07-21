@@ -34,11 +34,8 @@ export type Shortcut = { name: string; url: string };
 export type Config = {
 	owner: string;
 	jiraBase: string;
-	jiraClientId: string;
-	jiraClientSecret: string;
 	reportAgent: string;
 	reportPrompt: string;
-	kakaoRestKey: string;
 	lunchLat: string;
 	lunchLng: string;
 	lunchRadius: string;
@@ -87,6 +84,7 @@ export type Api = {
 		logout: () => Promise<any>;
 		tickets: () => Promise<any>;
 	};
+	me: () => Promise<{ user: string; isSetup: boolean } | null>;
 	agent: {
 		scan: () => Promise<any>;
 		generate: (opts?: unknown) => Promise<any>;

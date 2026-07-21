@@ -130,6 +130,22 @@ export const jiraAuth = sqliteTable("jira_auth", {
 	json: text("json").notNull().default("{}"),
 });
 
+// oauth_states — OAuth `state`(CSRF) 단기 저장. Workers 멀티인스턴스 대응(in-memory 대체).
+// payload=JSON{redirectUri,fromUser,createdAt}. TTL ~5분(조회 시 만료 판정后 삭제).
+export const oauthStates = sqliteTable("oauth_states", {
+	state: text("state").primaryKey(),
+	payload: text("payload").notNull().default("{}"),
+	createdAt: text("created_at").notNull(),
+});
+
+// sessions — 로그인 세션. httpOnly 쿠키(sid) → user(account_id). D1 저장(Workers 무상태 대응).
+export const sessions = sqliteTable("sessions", {
+	sid: text("sid").primaryKey(),
+	user: text("user").notNull(),
+	createdAt: text("created_at").notNull(),
+	expiresAt: text("expires_at").notNull(),
+});
+
 // task_rows 뷰 — 스크럼 태스크 + 일일 항목 평탄화(빈 행 제외). 파생 쿼리용.
 export const taskRows = sqliteView("task_rows", {
 	user: text("user").notNull(),

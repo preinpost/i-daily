@@ -17,10 +17,13 @@
   ],
 
   // 빌드된 React SPA(정적) 서빙. electron-vite 대신 웹 전용 vite 빌드 산출물.
+  // run_worker_first: /api/* 는 SPA fallback 보다 워커를 먼저 실행 — 그렇지 않으면
+  // navigate 요청(예: Jira OAuth 콜백 팝업)이 index.html(빈 SPA 셸)로 가로채여진다.
   "assets": {
     "directory": "./dist/web",
     "not_found_handling": "single-page-application",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
   },
 
   "observability": { "enabled": true }

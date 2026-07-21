@@ -22,6 +22,7 @@ import {
 	type Shortcut,
 	type Config,
 } from "./model.ts";
+import { SETUP_USER } from "./backend.ts";
 import type { Backend } from "./backend.ts";
 import {
 	days,
@@ -33,6 +34,8 @@ import {
 	shortcuts,
 	settings,
 	jiraAuth,
+	oauthStates,
+	sessions,
 	taskRows,
 } from "./schema.ts";
 
@@ -309,6 +312,23 @@ async function writeConfig(
 	return merged;
 }
 
+/**
+ * 첫 로그인 마이그레이션: fromUser(=setup) 의 config 를 toUser(=account_id) 로 복사.
+ * toUser 에 이미 설정이 있으면(재연결 등) no-op. OAuth 클라이언트 config 공유를 위해
+ * fromUser 행은 남겨둔다(삭제하지 않음) — 다음 신규 유저의 OAuth 시작에 사용.
+ */
+export async function migrateConfig(
+	db: DB,
+	fromUser: string,
+	toUser: string,
+): Promise<void> {
+	if (fromUser === toUser) return;
+	const exists = await hasConfig(db, toUser);
+	if (exists) return;
+	const cfg = await readConfig(db, fromUser);
+	await writeConfig(db, toUser, cfg);
+}
+
 async function hasConfig(db: DB, user: string): Promise<boolean> {
 	const row = await db
 		.select({ user: settings.user })
@@ -370,6 +390,109 @@ export async function writeJiraAuth(
 
 export async function clearJiraAuth(db: DB, user: string): Promise<void> {
 	await db.delete(jiraAuth).where(eq(jiraAuth.user, user));
+}
+
+// ───────────────────────── oauth_states (OAuth state CSRF, 단기) ─────────────────────────
+// Workers 멀티인스턴스환경에서도 동작하도록 state 를 D1 persist. TTL ~5분.
+export type OauthStatePayload = {
+	redirectUri: string;
+	fromUser: string;
+	createdAt: number;
+};
+
+export async function writeOauthState(
+	db: DB,
+	state: string,
+	p: OauthStatePayload,
+): Promise<void> {
+	await db.insert(oauthStates).values({
+		state,
+		payload: JSON.stringify(p),
+		createdAt: new Date(p.createdAt).toISOString(),
+	});
+}
+
+/** state 로 조회后 삭제(편). 만료퇴는 null. */
+export async function consumeOauthState(
+	db: DB,
+	state: string,
+	ttlMs = 5 * 60 * 1000,
+): Promise<OauthStatePayload | null> {
+	const row = await db
+		.select({ payload: oauthStates.payload, createdAt: oauthStates.createdAt })
+		.from(oauthStates)
+		.where(eq(oauthStates.state, state))
+		.get();
+	await db.delete(oauthStates).where(eq(oauthStates.state, state));
+	if (!row) return null;
+	try {
+		const p = JSON.parse(row.payload) as Partial<OauthStatePayload>;
+		const createdAt = Date.parse(row.createdAt);
+		if (!p.redirectUri || !p.fromUser || !createdAt) return null;
+		if (Date.now() - createdAt > ttlMs) return null;
+		return {
+			redirectUri: String(p.redirectUri),
+			fromUser: String(p.fromUser),
+			createdAt,
+		};
+	} catch {
+		return null;
+	}
+}
+
+// ───────────────────────── sessions (로그인 세션, sid 쿠키 → user) ─────────────────────────
+export type Session = {
+	sid: string;
+	user: string;
+	expiresAt: number;
+};
+
+export async function writeSession(
+	db: DB,
+	sid: string,
+	user: string,
+	expiresAt: number,
+): Promise<void> {
+	await db.insert(sessions).values({
+		sid,
+		user,
+		createdAt: new Date().toISOString(),
+		expiresAt: new Date(expiresAt).toISOString(),
+	});
+}
+
+/** sid 로 세션 조회. 만료teu는 null. */
+export async function readSession(
+	db: DB,
+	sid: string,
+	now = Date.now(),
+): Promise<Session | null> {
+	const row = await db
+		.select({
+			sid: sessions.sid,
+			user: sessions.user,
+			expiresAt: sessions.expiresAt,
+		})
+		.from(sessions)
+		.where(eq(sessions.sid, sid))
+		.get();
+	if (!row) return null;
+	const expiresAt = Date.parse(row.expiresAt);
+	if (!expiresAt || expiresAt <= now) return null;
+	return { sid: row.sid, user: row.user, expiresAt };
+}
+
+export async function deleteSession(db: DB, sid: string): Promise<void> {
+	await db.delete(sessions).where(eq(sessions.sid, sid));
+}
+
+/** 요청 쿠키에서 sid 를 읽어 유효한 user 를 리턴(없거나 만료면 SETUP_USER). */
+export async function resolveUser(db: DB, request: Request): Promise<string> {
+	const ck = request.headers.get("cookie") || "";
+	const m = ck.match(/(?:^|;\s*)sid=([^;]+)/);
+	if (!m) return SETUP_USER;
+	const s = await readSession(db, decodeURIComponent(m[1]));
+	return s?.user || SETUP_USER;
 }
 
 // ───────────────────────── shortcuts ─────────────────────────

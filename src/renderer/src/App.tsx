@@ -8,6 +8,7 @@ import { DayCard } from "./components/DayCard";
 import { TicketsPane } from "./components/TicketsPane";
 import { LunchPane } from "./components/LunchPane";
 import { ConfigPane } from "./components/ConfigPane";
+import { Login } from "./components/Login";
 import { WeeklyReportPane } from "./components/WeeklyReportPane";
 import { api } from "./lib/api";
 import {
@@ -26,7 +27,15 @@ export function App() {
 	const { version, checkNow, banner } = useAutoUpdate();
 
 	const [ready, setReady] = useState(false);
-	const [view, setView] = useState<View>("log");
+	// 인증 게이트: null=확인 전, false=미로그인(로그인 화면), true=로그인됨(앱).
+	const [authed, setAuthed] = useState<boolean | null>(null);
+	const [view, setView] = useState<View>(() => {
+		const qs = new URLSearchParams(location.search);
+		const v = qs.get("view");
+		return v === "tickets" || v === "lunch" || v === "report" || v === "config"
+			? v
+			: "log";
+	});
 	const [meta, setMeta] = useState<Meta>({
 		today: null,
 		owner: "",
@@ -243,6 +252,12 @@ export function App() {
 				setDot("err", "앱을 다시 시작해 주세요 (IPC 응답 없음)");
 				return;
 			}
+			// 미로그인(setup 유저)이면 앱 대신 전체화면 로그인 게이트.
+			if (r.json.isSetup) {
+				setAuthed(false);
+				return;
+			}
+			setAuthed(true);
 			const today = r.json.today as string;
 			const cfg = normCfg(r.json.config || {});
 			const m: Meta = { today, owner: cfg.owner, jiraBase: cfg.jiraBase };
@@ -259,6 +274,17 @@ export function App() {
 			}
 		})();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	// Jira OAuth 팝업이 로그인 완료를 postMessage 로 알리면(= 새 sid 쿠키 반영됨) 재부팅.
+	// 새 세션 user(account_id) 로 config/일지를 다시 불러오기 위해 location.reload.
+	useEffect(() => {
+		const onMsg = (e: MessageEvent) => {
+			if (e.origin !== location.origin) return;
+			if (e.data && e.data.type === "i-daily-login") location.reload();
+		};
+		window.addEventListener("message", onMsg);
+		return () => window.removeEventListener("message", onMsg);
 	}, []);
 
 	// ⌘S 저장
@@ -286,9 +312,25 @@ export function App() {
 
 	useEffect(() => {
 		document.body.classList.toggle("viewing-web", view !== "log");
+		const qs = new URLSearchParams(location.search);
+		if (view === "log") qs.delete("view");
+		else qs.set("view", view);
+		const qsStr = qs.toString();
+		const url = qsStr ? `${location.pathname}?${qsStr}` : location.pathname;
+		history.replaceState(null, "", url);
 	}, [view]);
 
-	if (!ready || !docRef.current) {
+	// 미로그인 → 전체화면 로그인 게이트(URL 은 그대로).
+	if (authed === false) {
+		return (
+			<>
+				{banner}
+				<Login />
+			</>
+		);
+	}
+
+	if (authed === null || !ready || !docRef.current) {
 		return (
 			<>
 				{banner}

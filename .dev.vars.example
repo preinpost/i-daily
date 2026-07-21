@@ -1,0 +1,23 @@
+# 로컬 wrangler dev 용 secrets (.dev.vars 로 복사해 채우세요 — 커밋 금지).
+# 배포는 `wrangler secret put <NAME>` 로 등록(원격 Workers 에 적용).
+
+# Atlassian OAuth 2.0 (3LO) 클라이언트 — developer.atlassian.com/myapps 에서 발급.
+# 앱의 Callback URL 을 아래 JIRA_REDIRECT_URI 와 똑같이 등록해야 함.
+#  - 운영: https://i-daily.<your-subdomain>.workers.dev/api/jira/callback
+#  - 로컬 dev: http://localhost:5173/api/jira/callback  (← 반드시 앱 오리진=vite 5173)
+JIRA_CLIENT_ID=
+JIRA_CLIENT_SECRET=
+
+# OAuth 콜백 URL 고정. 로컬 dev 에서는 반드시 앱 오리진(vite 5173)으로 지정!
+# 이유: 콜백이 앱과 같은 오리진으로 돌아와야(vite 프록시 → /api → wrangler)
+# 세션 쿠키(sid)가 앱에 저장되고 postMessage 로 로그인 완료를 알릴 수 있다.
+# 127.0.0.1:8787 로 두면 쿠키가 다른 오리진에 저장되어 “연동 안됨” 으로 보인다.
+JIRA_REDIRECT_URI=http://localhost:5173/api/jira/callback
+
+# 카카오 로컬 API REST 키(점심 탭 맛집 검색) — developers.kakao.com/console/my-app
+# 내 앱 → 플랫폼 Web 추가 → 사이트 도메인 등록 후 REST API 키 발급.
+KAKAO_REST_KEY=
+
+# (선택) config 초기값 — 공개 배포 시 비움. user 가 설정 탭에서 덮어씀.
+# OWNER=
+# JIRA_BASE=

@@ -104,7 +104,7 @@ export function LunchPane({
 		}
 	}
 
-	const hasKey = !!config.kakaoRestKey.trim();
+	// 카카오 REST 키는 서버 전역 secret(클라이언트에 도달하지 않음) → 여기선 좌표만 판별.
 	const hasCoords = !!config.lunchLat.trim() && !!config.lunchLng.trim();
 
 	async function load(q: string) {
@@ -144,7 +144,7 @@ export function LunchPane({
 
 	// 활성화 시 자동 1회 검색(키·좌표 있을 때만)
 	useEffect(() => {
-		if (active && !didAuto.current && hasKey && hasCoords) {
+		if (active && !didAuto.current && hasCoords) {
 			didAuto.current = true;
 			load("음식점");
 		}
@@ -193,7 +193,7 @@ export function LunchPane({
 						type="button"
 						className="btn btn-ghost"
 						title="여러 카테고리를 모아 무작위 3곳 뽑기(카페 제외)"
-						disabled={!hasKey || !hasCoords || picking}
+						disabled={!hasCoords || picking}
 						onClick={pickRandom}
 					>
 						{picking ? "🎲 끑러는 중…" : "🎲 랜덤 3곳"}
@@ -308,24 +308,10 @@ export function LunchPane({
 					</div>
 				</div>
 
-				{!hasKey || !hasCoords ? (
+				{!hasCoords ? (
 					<p className="tint-accent m-0 rounded-[10px] px-3.5 py-2.5 text-[13px] text-ink">
-						⚙️ 설정 → 점심 에서 <b>카카오 REST API 키</b>와 <b>사무실 좌표</b>를
-						등록하세요. 키는{" "}
-						<button
-							type="button"
-							className="cursor-pointer border-0 bg-transparent p-0 font-inherit text-accent underline"
-							onClick={() =>
-								window.open(
-									"https://developers.kakao.com/console/my-app",
-									"_blank",
-									"noopener",
-								)
-							}
-						>
-							developers.kakao.com
-						</button>{" "}
-						에서 발급(플랫폼 → Web → 사이트 도메인 등록 후 REST API 키).
+						⚙️ 설정 → 점심 에서 <b>사무실 좌표</b>를 등록하세요. 카카오 REST API
+						키는 서버 전역 secret 으로 관리되므로 좌표·반경만 설정하면 됩니다.
 					</p>
 				) : state.loading ? (
 					<p className="px-0.5 py-3 text-[13px] text-ink-2">불러오는 중…</p>

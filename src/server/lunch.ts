@@ -1,6 +1,6 @@
 // server/lunch.ts — 점심 탭 맛집 검색 (서버 측). 카카오 로컬 API 호출.
 //   POST /api/lunch/search → { query, lat, lng, radius, size } 로 Kakao dapi 호출 → documents[] 정제.
-// config(kakaoRestKey·좌표) 는 Backend.readConfig() 로 주입.
+// 카카오 REST 키는 앱 전역 secret(env KAKAO_REST_KEY). 좌표(lat/lng/radius)는 user 설정.
 //
 // 카카오 로컬 API는 평점을 JSON으로 주지 않는다. 각 결과의 place_url 이 카카오맵
 // 상세 페이지(별점·리뷰·사진)로 연결되므로, 앱 안에선 이름·카테고리·거리·주소·전화를
@@ -88,7 +88,7 @@ function parseKakaoError(body: string, status: number): string {
 		if (body) msg += ` — ${body.slice(0, 120)}`;
 	}
 	if (status === 401)
-		msg = "카카오 REST API 키가 유효하지 않습니다(401). ⚙️ 설정에서 확인.";
+		msg = "카카오 REST API 키가 유효하지 않습니다(401). 관리자에게 문의하세요.";
 	if (status === 429)
 		msg = "카카오 API 호출 한도를 초과했습니다(429). 잠시 후 다시 시도.";
 	return msg;
@@ -116,17 +116,22 @@ export async function searchLunch(
 	opts: SearchOpts,
 ): Promise<SearchResult | SearchError> {
 	const cfg = await backend.readConfig();
-	const key = (cfg.kakaoRestKey || "").trim();
+	// 카카오 REST 키는 user 설정이 아닌 앱 전역 secret(env). 좌표는 user config.
+	const key = (
+		(globalThis as { process?: { env?: Record<string, string | undefined> } })
+			.process?.env?.KAKAO_REST_KEY || ""
+	).trim();
 	if (!key)
 		return {
 			ok: false,
 			error:
-				"카카오 REST API 키가 없습니다. ⚙️ 설정 → 점심 에서 키를 등록하세요.",
+				"카카오 REST API 키가 서버에 설정되지 않았습니다. 관리자에게 문의하세요.",
 			needKey: true,
 		};
 
-	const lat = Number(opts.lat);
-	const lng = Number(opts.lng);
+	// 좌표 우선순위: 요청 인자 > user config(lunchLat/Lng). radius 도 동일.
+	const lat = Number(opts.lat || cfg.lunchLat);
+	const lng = Number(opts.lng || cfg.lunchLng);
 	if (!isFinite(lat) || !isFinite(lng) || !lat || !lng)
 		return {
 			ok: false,
@@ -135,7 +140,10 @@ export async function searchLunch(
 		};
 
 	const query = (opts.query || "음식점").trim();
-	const radius = Math.max(100, Math.min(20000, Number(opts.radius) || 1000));
+	const radius = Math.max(
+		100,
+		Math.min(20000, Number(opts.radius || cfg.lunchRadius || 1000)),
+	);
 	const want = Math.max(1, Math.min(45, Number(opts.size) || 45));
 	const maxPage = Math.min(3, Math.ceil(want / 15));
 

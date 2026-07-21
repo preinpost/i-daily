@@ -3,6 +3,14 @@
 // route()는 이 인터페이스만 의존하므로, 전송·DB 드라이버가 바뀌어도 라우팅 로직은 무손상.
 import type { Store, Config, TaskFilter, TaskRow } from "./model.ts";
 
+/**
+ * 미로그인(세션 없음) 상태의 센틀넬 유저 키.
+ * 이 프로파일(settings 행)에 OAuth 클라이언트 config(clientId/secret/jiraBase)와
+ * 최초 개인 설정(owner 등)이 보관되다가, Atlassian 로그인(account_id 확보) 즉시
+ * account_id 프로파일로 이관된다. 이후 모든 user 키 데이터는 account_id 기준.
+ */
+export const SETUP_USER = "setup";
+
 export interface Backend {
 	/** 요청 유저(=DB user 키). 응답 본문에 포함되므로 노출. */
 	readonly user: string;

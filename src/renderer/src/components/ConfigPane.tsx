@@ -8,7 +8,6 @@ type JiraStatus = {
 	configured?: boolean;
 	site?: string;
 	siteUrl?: string;
-	redirectUri?: string;
 } | null;
 
 const fieldCls = "rounded-[9px] bg-panel-2 px-3 py-[9px] text-[13px]";
@@ -25,14 +24,7 @@ export function ConfigPane({
 	onSaved: (cfg: Config, configured: boolean) => void;
 }) {
 	const toast = useToast();
-	const [owner, setOwner] = useState(config.owner);
-	const [jira, setJira] = useState(config.jiraBase);
-	const [clientId, setClientId] = useState(config.jiraClientId || "");
-	const [clientSecret, setClientSecret] = useState(
-		config.jiraClientSecret || "",
-	);
 	const [reportAgent, setReportAgent] = useState(config.reportAgent || "");
-	const [kakaoKey, setKakaoKey] = useState(config.kakaoRestKey || "");
 	const [lunchLat, setLunchLat] = useState(config.lunchLat || "");
 	const [lunchLng, setLunchLng] = useState(config.lunchLng || "");
 	const [lunchRadius, setLunchRadius] = useState(config.lunchRadius || "1000");
@@ -42,16 +34,12 @@ export function ConfigPane({
 	const [scanning, setScanning] = useState(false);
 	const [savedAt, setSavedAt] = useState("");
 	const [js, setJs] = useState<JiraStatus>(null);
+	const [me, setMe] = useState<{ user: string; isSetup: boolean } | null>(null);
 	const [hideFirstRun, setHideFirstRun] = useState(false);
 
 	// config 가 갱신되면(저장 후) 폼 재동기화
 	useEffect(() => {
-		setOwner(config.owner);
-		setJira(config.jiraBase);
-		setClientId(config.jiraClientId || "");
-		setClientSecret(config.jiraClientSecret || "");
 		setReportAgent(config.reportAgent || "");
-		setKakaoKey(config.kakaoRestKey || "");
 		setLunchLat(config.lunchLat || "");
 		setLunchLng(config.lunchLng || "");
 		setLunchRadius(config.lunchRadius || "1000");
@@ -72,11 +60,15 @@ export function ConfigPane({
 
 	async function refreshJira() {
 		const j = window.api?.jira;
+		const me = window.api?.me;
 		if (!j) return;
 		try {
-			setJs(await j.status());
+			const [st, mi] = await Promise.all([j.status(), me ? me() : null]);
+			setJs(st);
+			setMe(mi);
 		} catch {
 			setJs(null);
+			setMe(null);
 		}
 	}
 	useEffect(() => {
@@ -88,12 +80,10 @@ export function ConfigPane({
 
 	async function save() {
 		const next = {
-			owner: owner.trim(),
-			jiraBase: jira.trim(),
-			jiraClientId: clientId.trim(),
-			jiraClientSecret: clientSecret.trim(),
+			// owner·jiraBase 는 Jira 로그인이 자동 채움 — 기존 값 보존(설정 입력칸 없음).
+			owner: config.owner,
+			jiraBase: config.jiraBase,
 			reportAgent: reportAgent.trim(),
-			kakaoRestKey: kakaoKey.trim(),
 			lunchLat: lunchLat.trim(),
 			lunchLng: lunchLng.trim(),
 			lunchRadius: lunchRadius.trim() || "1000",
@@ -140,20 +130,26 @@ export function ConfigPane({
 	async function logout() {
 		try {
 			await window.api?.jira.logout();
-			toast("Jira 연결 해제됨");
+			toast("로그아웃 — Jira 연결 해제됨");
 		} catch {
 			/* noop */
 		}
-		refreshJira();
+		// 로그아웃 = 세션 만료 → user 가 setup 으로 복귀. 새 상태로 재부팅.
+		location.reload();
 	}
 
 	const jiraText = !js
 		? "—"
 		: js.connected
-			? "✅ 연결됨 — " + (js.site || js.siteUrl || "")
+			? "✅ " + "연결됨 — " + (js.site || js.siteUrl || "")
 			: js.configured
-				? "미연결 (client id/secret 저장됨)"
-				: "client id/secret 을 입력하고 저장하세요";
+				? "미연결 — 🔗 버튼으로 로그인하세요"
+				: "서버에 Jira OAuth 클라이언트가 설정되지 않음(관리자)";
+	const connectLabel = js?.connected
+		? "🔄 다시 연결"
+		: me?.isSetup === false
+			? "🔗 로그인"
+			: "🔗 Jira 연결";
 
 	return (
 		<div
@@ -164,101 +160,22 @@ export function ConfigPane({
 				<h2 className="m-0 text-xl font-extrabold text-ink">⚙️ 설정</h2>
 				{firstRun && !hideFirstRun && (
 					<p className="tint-accent m-0 rounded-[10px] px-3.5 py-2.5 text-[13px] text-ink">
-						처음 실행이에요. 아래 값을 채우면 업무일지가 활성화됩니다. (Jira
-						주소·이름 필수)
+						처음 실행이에요. 아래 <b>Jira 연동</b>으로 로그인하면 이름·사이트
+						주소가 자동으로 채워지고 업무일지가 활성화됩니다.
 					</p>
 				)}
 
-				<label className="flex flex-col gap-1.5">
-					<span className="text-[13px] font-bold text-ink">이름 (owner)</span>
-					<input
-						className={fieldCls}
-						placeholder="홍길동"
-						value={owner}
-						onChange={(e) => setOwner(e.target.value)}
-					/>
-				</label>
-
-				<label className="flex flex-col gap-1.5">
-					<span className="text-[13px] font-bold text-ink">
-						Jira 호스트 URL
-					</span>
-					<input
-						className={fieldCls}
-						placeholder="https://your-org.atlassian.net"
-						value={jira}
-						onChange={(e) => setJira(e.target.value)}
-					/>
-					<small className="text-xs text-ink-2">
-						호스트만 넣으면 됩니다 —{" "}
-						<code className="rounded-[5px] bg-panel px-[5px] py-px font-mono">
-							/browse/티켓
-						</code>{" "}
-						은 자동으로 붙습니다.
-					</small>
-				</label>
-
 				<h3 className="mt-4 border-t border-line pt-4 text-[15px] font-extrabold text-ink">
-					🎫 Jira 연동 (OAuth 2.0 · 3LO)
+					🎫 Jira 연동
 				</h3>
-				<p className="tint-accent m-0 rounded-[10px] px-3.5 py-2.5 text-xs text-ink">
-					<button
-						type="button"
-						className="cursor-pointer border-0 bg-transparent p-0 font-inherit text-accent underline"
-						onClick={() =>
-							window.open(
-								"https://developer.atlassian.com/console/myapps/",
-								"_blank",
-								"noopener",
-							)
-						}
-					>
-						developer.atlassian.com
-					</button>{" "}
-					→ <b>OAuth 2.0 (3LO)</b> 앱 생성 → Permissions 에 <b>Jira API</b>
-					(read:jira-work, read:jira-user) 추가 → Authorization 의{" "}
-					<b>Callback URL</b> 에 아래 값을 그대로 등록 → Settings 의 client
-					id/secret 을 아래에 붙여넣으세요.
-					<br />
-					Callback URL:{" "}
-					<code className="rounded-[5px] bg-panel px-[5px] py-px font-mono">
-						{js?.redirectUri || "http://localhost:43117/callback"}
-					</code>
-				</p>
-
-				<label className="flex flex-col gap-1.5">
-					<span className="text-[13px] font-bold text-ink">Jira Client ID</span>
-					<input
-						className={fieldCls}
-						placeholder="developer.atlassian.com 앱의 Client ID"
-						value={clientId}
-						onChange={(e) => setClientId(e.target.value)}
-					/>
-				</label>
-				<label className="flex flex-col gap-1.5">
-					<span className="text-[13px] font-bold text-ink">
-						Jira Client Secret
-					</span>
-					<input
-						className={fieldCls}
-						type="password"
-						placeholder="••••••••"
-						value={clientSecret}
-						onChange={(e) => setClientSecret(e.target.value)}
-					/>
-					<small className="text-xs text-ink-2">
-						client secret·발급 토큰은 로컬 SQLite에만 저장됩니다(외부 전송
-						없음).
-					</small>
-				</label>
 
 				<div className="mt-1 flex items-center gap-3">
 					<button type="button" className="btn btn-primary" onClick={connect}>
-						{js?.connected ? "🔄 다시 연결" : "🔗 Jira 연결"}
+						{connectLabel}
 					</button>
 					{js?.connected && (
 						<button type="button" className="btn btn-ghost" onClick={logout}>
-							연결 해제
+							로그아웃
 						</button>
 					)}
 					<span className="text-[13px] text-ink-2">{jiraText}</span>
@@ -336,21 +253,13 @@ export function ConfigPane({
 						developers.kakao.com
 					</button>{" "}
 					→ 내 앱 → 플랫폼 <b>Web</b> 추가 → 사이트 도메인 등록 →{" "}
-					<b>REST API 키</b>를 아래에 붙여넣으세요. 키는 로컬 SQLite에만
-					저장됩니다.
+					<b>REST API 키</b> 발급. 키는 서버 전역 secret 으로 관리됩니다 — 이
+					설정화면이 아닌, 배포자가{" "}
+					<code className="rounded-[5px] bg-panel px-[5px] py-px font-mono">
+						wrangler secret put KAKAO_REST_KEY
+					</code>{" "}
+					로 등록합니다. 여기서는 사무실 좌표/반경만 설정합니다.
 				</p>
-
-				<label className="flex flex-col gap-1.5">
-					<span className="text-[13px] font-bold text-ink">
-						카카오 REST API 키
-					</span>
-					<input
-						className={fieldCls}
-						placeholder="KakaoAK ..."
-						value={kakaoKey}
-						onChange={(e) => setKakaoKey(e.target.value)}
-					/>
-				</label>
 
 				<div className="flex flex-col gap-1.5">
 					<span className="text-[13px] font-bold text-ink">
