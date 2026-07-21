@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Tailwind v4: root(src/renderer-web) 밖의 컴포넌트를 스캔해 bg-panel 등 utility 생성.
+/* Tailwind v4: 컴포넌트를 스캔해 bg-panel 등 utility 생성.
    경로는 이 CSS 파일(src/renderer/styles.css) 기준 → src/renderer/src/ */
 @source "./src";
 

@@ -7,9 +7,9 @@ import { resolve } from "node:path";
 
 export default defineConfig({
 	plugins: [react(), tailwindcss()],
-	// root 를 renderer-web 으로 → http://localhost:5173/ 에서 index.html 서빙.
-	// Tailwind 가 root 밖(renderer/src 컴포넌트) 도 스캔하도록 styles.css 의 @source 로 보충.
-	root: resolve(__dirname, "src/renderer-web"),
+	// root 를 renderer 로 → http://localhost:5173/ 에서 index.html 서빙.
+	// styles.css 의 @source "./src" 로 컴포넌트를 스캔.
+	root: resolve(__dirname, "src/renderer"),
 	build: {
 		outDir: resolve(__dirname, "dist/web"),
 		emptyOutDir: true,
