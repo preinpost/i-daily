@@ -1,4 +1,5 @@
-# semver bump → tag → D1 마이그레이션 적용 → Cloudflare Workers 배포 → GitHub Release
+# 검증 → 빌드 → D1 마이그레이션 → Cloudflare Workers 배포까지 모두 성공한 뒤에만
+# 버전 확정(commit + tag) 및 GitHub Release 생성. → 실패 시 버전 번호가 낭비되지 않음.
 name: Release
 
 on:
@@ -27,12 +28,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  bump:
-    name: Bump version
+  release:
+    name: Build, deploy & release
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.bump.outputs.version }}
-      tag: ${{ steps.bump.outputs.tag }}
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,46 +42,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Bump package.json (semver)
-        id: bump
-        run: |
-          BOT_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-          git config user.email "$BOT_EMAIL"
-
-          # package.json 버전 bump + 커밋 + 태그 (vX.Y.Z)
-          BUMP="${{ inputs.bump }}"
-          NEW_VERSION=$(npm version "$BUMP" -m "chore(release): v%s")
-          TAG="$NEW_VERSION"
-          VERSION="${NEW_VERSION#v}"
-
-          git push origin HEAD
-          git push origin "$TAG"
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Bumped to $TAG"
-
-  deploy:
-    name: Deploy to Cloudflare Workers
-    needs: bump
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout ${{ needs.bump.outputs.tag }}
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.bump.outputs.tag }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      # 다음 버전을 로컬에서만 계산(커밋/태그 없음). 배포가 성공해야 확정한다.
+      - name: Compute next version (no tag)
+        id: version
+        run: |
+          NEW_VERSION=$(npm version "${{ inputs.bump }}" --no-git-tag-version)
+          VERSION="${NEW_VERSION#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Next version: $NEW_VERSION"
 
       - name: Generate worker types
         run: npm run types:worker
@@ -92,6 +65,7 @@ jobs:
           npm run typecheck
           npm test
 
+      # package.json 의 새 버전으로 __APP_VERSION__ 이 주입된다.
       - name: Build web assets
         run: npm run build
 
@@ -107,17 +81,23 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler deploy
 
-  release:
-    name: GitHub Release
-    needs: [bump, deploy]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
+      # 여기까지 왔다면 배포 성공 → 이제서야 버전을 확정(commit + tag + push).
+      - name: Commit, tag & push version
+        run: |
+          BOT_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "$BOT_EMAIL"
+
+          git commit -am "chore(release): ${{ steps.version.outputs.tag }}"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin HEAD
+          git push origin "${{ steps.version.outputs.tag }}"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.bump.outputs.tag }}
-          name: ${{ needs.bump.outputs.tag }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
           draft: false
           prerelease: ${{ inputs.prerelease }}
           generate_release_notes: true
