@@ -1,9 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useEditor } from "../context/EditorContext";
 import { useToast } from "./Toast";
 import { useContextMenu } from "./ContextMenu";
 import { ensureDailyItem, kanbanColumns } from "../lib/model";
 import type { Ticket } from "../types";
+
+/* ── 숨긴 티켓 (localStorage) ── */
+const HIDDEN_KEY = "hidden-tickets";
+function loadHidden(): Set<string> {
+	try {
+		return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]"));
+	} catch {
+		return new Set();
+	}
+}
+function saveHidden(s: Set<string>): void {
+	localStorage.setItem(HIDDEN_KEY, JSON.stringify([...s]));
+}
 
 export function TicketsPane({ active }: { active: boolean }) {
 	const { doc, commit } = useEditor();
@@ -19,6 +32,8 @@ export function TicketsPane({ active }: { active: boolean }) {
 		tickets: [],
 	});
 	const loaded = useRef(false);
+	const [hidden, setHidden] = useState<Set<string>>(loadHidden);
+	const [showHidden, setShowHidden] = useState(false);
 
 	async function load(force?: boolean) {
 		const jira = window.api?.jira;
@@ -81,6 +96,31 @@ export function TicketsPane({ active }: { active: boolean }) {
 				: t.key + " 이미 일일에 있어요",
 		);
 	}
+
+	const hideTicket = useCallback((t: Ticket) => {
+		setHidden((prev) => {
+			const next = new Set(prev);
+			next.add(t.key);
+			saveHidden(next);
+			return next;
+		});
+		toast(t.key + " 숨김 처리");
+	}, []);
+
+	const unhideTicket = useCallback((t: Ticket) => {
+		setHidden((prev) => {
+			const next = new Set(prev);
+			next.delete(t.key);
+			saveHidden(next);
+			return next;
+		});
+		toast(t.key + " 다시 표시");
+	}, []);
+
+	const visibleTickets = showHidden
+		? state.tickets.filter((t) => hidden.has(t.key))
+		: state.tickets.filter((t) => !hidden.has(t.key));
+
 	return (
 		<div
 			hidden={!active}
@@ -88,11 +128,25 @@ export function TicketsPane({ active }: { active: boolean }) {
 		>
 			<div className="mx-auto w-full max-w-[1200px] px-5 pb-12 pt-5">
 				<div className="mb-3.5 flex items-center gap-3">
-					<h2 className="m-0 text-xl font-extrabold text-ink">🎫 내 티켓</h2>
+					<h2 className="m-0 text-xl font-extrabold text-ink">
+						{showHidden ? "🙈 숨긴 업무" : "🎫 내 티켓"}
+					</h2>
 					<span className="text-xs text-ink-2">
 						{state.site ? "@ " + state.site : ""}
 					</span>
 					<div className="flex-1" />
+					<button
+						type="button"
+						className={
+							"btn btn-ghost" + (showHidden ? " text-accent" : "")
+						}
+						title="숨긴 업무 보기"
+						onClick={() => setShowHidden((v) => !v)}
+					>
+						{showHidden
+							? "← 티켓으로"
+							: "숨긴 업무" + (hidden.size ? ` (${hidden.size})` : "")}
+					</button>
 					<button
 						type="button"
 						className="btn btn-ghost"
@@ -109,13 +163,15 @@ export function TicketsPane({ active }: { active: boolean }) {
 					<p className="px-0.5 py-3 text-[13px] text-danger">
 						불러오기 실패: {state.error} — ⚙️ 설정에서 Jira 연결을 확인하세요.
 					</p>
-				) : !state.tickets.length ? (
+				) : !visibleTickets.length ? (
 					<p className="px-0.5 py-3 text-[13px] text-ink-2">
-						내게 할당된 티켓이 없습니다.
+						{showHidden
+							? "숨긴 업무가 없습니다."
+							: "내게 할당된 티켓이 없습니다."}
 					</p>
 				) : (
 					<div className="grid grid-cols-3 items-start gap-3.5">
-						{kanbanColumns(state.tickets).map((col) => (
+						{kanbanColumns(visibleTickets).map((col) => (
 							<div
 								key={col.cat}
 								className="flex min-w-0 flex-col rounded-xl border border-line bg-panel-2 p-2.5"
@@ -160,12 +216,28 @@ export function TicketsPane({ active }: { active: boolean }) {
 												}}
 												onContextMenu={(e) => {
 													e.preventDefault();
-													openMenu(e.clientX, e.clientY, [
-														{
-															label: "일일 진행 업무에 추가",
-															onClick: () => addToDaily(t),
-														},
-													]);
+													openMenu(
+														e.clientX,
+														e.clientY,
+														showHidden
+															? [
+																	{
+																		label: "다시 보이기",
+																		onClick: () => unhideTicket(t),
+																	},
+																]
+															: [
+																	{
+																		label: "일일 진행 업무에 추가",
+																		onClick: () => addToDaily(t),
+																	},
+																	{ sep: true },
+																	{
+																		label: "업무 숨기기",
+																		onClick: () => hideTicket(t),
+																	},
+																],
+													);
 												}}
 											>
 												<div className="flex items-baseline justify-between gap-2">
