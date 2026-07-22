@@ -19,3 +19,4 @@ worker-configuration.d.ts
 
 # pi-subagents runtime artifacts
 .pi-subagents/
+backup-idaily.sql
