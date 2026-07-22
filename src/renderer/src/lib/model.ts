@@ -255,3 +255,15 @@ export function renameListSpace(
 	const to = (newLabel || "").trim();
 	for (const it of items) if ((it.space || "").trim() === from) it.space = to;
 }
+// 단일 항목 스페이스 이동 — 드래그로 다른 스페이스(또는 무그룹)에 떨어뜨릴 때 사용.
+// 원본 배열 순서는 그대로 둬 groupListItems 가 space 로 묶을 때 번호/순서가 자연스럽게 유지되게 한다.
+export function moveItemToSpace(
+	items: ListItem[],
+	fromIndex: number,
+	spaceLabel: string,
+): boolean {
+	const it = items[fromIndex];
+	if (!it) return false;
+	it.space = (spaceLabel || "").trim();
+	return true;
+}

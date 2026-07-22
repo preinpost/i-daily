@@ -214,7 +214,7 @@ function spaceHasContent(sp: Space): boolean {
 }
 // 스페이스 한 개 → 마크다운 라인들.
 function fmtSpaceLines(jiraBase: string, sp: Space): string[] {
-	const lines = [`  + **[${sp.label || "?"}]**`];
+	const lines = [`  + **[${sp.label || "스페이스 없음"}]**`];
 	for (const t of sp.tasks ?? []) {
 		if (!(t.key || t.desc)) continue;
 		lines.push(taskLine(jiraBase, t));
@@ -227,8 +227,21 @@ export function fmtBlock(jiraBase: string, title: string, b: Block): string {
 	const L = [`**[${title}]**`, "- 업무 계획"];
 	for (const sp of b.spaces ?? [])
 		if (spaceHasContent(sp)) L.push(...fmtSpaceLines(jiraBase, sp));
-	L.push("- 이슈 사항: " + ((b.issues || "").trim() || "없음"));
-	L.push("- 협업 및 기타: " + ((b.collab || "").trim() || "없음"));
+	for (const [label, val] of [
+		["이슈 사항", b.issues],
+		["협업 및 기타", b.collab],
+	] as const) {
+		const items = parseMetaLines(val);
+		if (!items.length) {
+			L.push(`- ${label}: 없음`);
+		} else {
+			L.push(`- ${label}`);
+			for (const it of items) {
+				L.push("  - " + it.text);
+				for (const s of it.subs) L.push("    - " + s);
+			}
+		}
+	}
 	return L.join("\n");
 }
 export function renderScrum(jiraBase: string, s: Scrum): string {
@@ -268,6 +281,38 @@ export function taskHtml(jiraBase: string, t: Task): string {
 		: "";
 	return `<li>${htmlHead(jiraBase, key, desc, meta)}${subHtml}</li>`;
 }
+// 이슈·협업 개행 문자열 → 2레벨(메인+하위) 구조. 탭(\t) 시작 = 하위.
+export type MetaItem = { text: string; subs: string[] };
+export function parseMetaLines(value?: string): MetaItem[] {
+	const v = (value || "").trim();
+	if (!v || v === "없음") return [];
+	const items: MetaItem[] = [];
+	for (const raw of v.split("\n")) {
+		const isSub = raw.startsWith("\t");
+		const t = raw.replace(/^\t+/, "").trim();
+		if (!t) continue;
+		if (isSub) {
+			if (items.length) items[items.length - 1].subs.push(t);
+		} else {
+			items.push({ text: t, subs: [] });
+		}
+	}
+	return items;
+}
+// 이슈·협업 → HTML (없음이면 인라인, 값 있으면 라벨만 + 2레벨 중첩 <ul>)
+function metaHtml(label: string, val: string | undefined): string {
+	const items = parseMetaLines(val);
+	if (!items.length) return `<li>${label}: 없음</li>`;
+	const lis = items
+		.map((it) => {
+			const sub = it.subs.length
+				? `<ul>${it.subs.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>`
+				: "";
+			return `<li>${esc(it.text)}${sub}</li>`;
+		})
+		.join("");
+	return `<li>${label}<ul>${lis}</ul></li>`;
+}
 export function blockHtml(jiraBase: string, title: string, b: Block): string {
 	let inner = "";
 	for (const sp of b.spaces ?? []) {
@@ -275,13 +320,13 @@ export function blockHtml(jiraBase: string, title: string, b: Block): string {
 		const rows = (sp.tasks ?? [])
 			.flatMap((t) => (t.key || t.desc ? [taskHtml(jiraBase, t)] : []))
 			.join("");
-		inner += `<li><b>[${esc(sp.label || "?")}]</b><ul>${rows}</ul></li>`;
+		inner += `<li><b>[${esc(sp.label || "스페이스 없음")}]</b><ul>${rows}</ul></li>`;
 	}
 	return (
 		`<p><b>[${esc(title)}]</b></p><ul>` +
 		`<li>업무 계획<ul>${inner}</ul></li>` +
-		`<li>이슈 사항: ${esc((b.issues || "").trim() || "없음")}</li>` +
-		`<li>협업 및 기타: ${esc((b.collab || "").trim() || "없음")}</li>` +
+		metaHtml("이슈 사항", b.issues) +
+		metaHtml("협업 및 기타", b.collab) +
 		`</ul>`
 	);
 }
@@ -433,19 +478,23 @@ function pickBlock(s: Scrum, header: string): Block | null {
 	if (header.includes("금일")) return s.today;
 	return null;
 }
-// 블록 메타(이슈/협업/업무계획 소제목) 한 줄 반영. 처리했으면 true.
-function applyBlockMeta(cur: Block, line: string): boolean {
+// 블록 메타(이슈/협업/업무계획 소제목) 한 줄 반영. 처리했으면 필드명 또는 "skip".
+function applyBlockMeta(
+	cur: Block,
+	line: string,
+): "issues" | "collab" | "skip" | null {
 	let m: RegExpMatchArray | null;
-	if ((m = line.match(/^-\s*이슈\s*사항\s*:\s*(.*)$/))) {
-		cur.issues = m[1].trim() || "없음";
-		return true;
+	// 콜론 유무 모두 매치 — 콜론 없으면 값 비워두고 하위 불릿에서 채움
+	if ((m = line.match(/^-\s*이슈\s*사항\s*:?\s*(.*)$/))) {
+		cur.issues = m[1].trim() || "";
+		return "issues";
 	}
-	if ((m = line.match(/^-\s*협업[^:]*:\s*(.*)$/))) {
-		cur.collab = m[1].trim() || "없음";
-		return true;
+	if ((m = line.match(/^-\s*협업[^:]*:?\s*(.*)$/))) {
+		cur.collab = m[1].trim() || "";
+		return "collab";
 	}
-	if (/^-\s*업무\s*계획/.test(line)) return true; // 고정 소제목, 스킵
-	return false;
+	if (/^-\s*업무\s*계획/.test(line)) return "skip"; // 고정 소제목, 스킵
+	return null;
 }
 // '+' 불릿 한 줄 → 스페이스/태스크/하위불릿 반영. 갱신된 space/task 리턴.
 function applyScrumBullet(
@@ -480,6 +529,7 @@ export function parseScrum(body: string, year: number): Scrum {
 	let cur: Block | null = null;
 	let space: Space | null = null;
 	let task: Task | null = null;
+	let lastMeta: "issues" | "collab" | null = null;
 	for (const raw of body.split("\n")) {
 		const line = raw.replace(/\s+$/, "");
 		if (!line.trim()) continue;
@@ -488,10 +538,32 @@ export function parseScrum(body: string, year: number): Scrum {
 			cur = pickBlock(s, header[1]);
 			space = null;
 			task = null;
+			lastMeta = null;
 			continue;
 		}
 		if (!cur) continue;
-		if (applyBlockMeta(cur, line)) continue;
+		const meta = applyBlockMeta(cur, line);
+		if (meta === "skip") {
+			lastMeta = null;
+			continue;
+		}
+		if (meta === "issues" || meta === "collab") {
+			lastMeta = meta;
+			continue;
+		}
+		// 들여쓴 하위 불릿 → 이슈/협업 다중 행 수집
+		if (lastMeta && cur) {
+			const sub = line.match(/^(\s*)-\s+(.*)$/);
+			if (sub) {
+				const field = lastMeta === "issues" ? "issues" : "collab";
+				const t = sub[2].trim();
+				// 4+공백 들여쓰기 = 하위(탭 인코딩), 2공백 = 메인
+				const enc = sub[1].length >= 4 ? "\t" + t : t;
+				cur[field] = cur[field] ? cur[field] + "\n" + enc : enc;
+				continue;
+			}
+		}
+		lastMeta = null;
 		const bm = line.match(/^\s*\+\s+(.*)$/);
 		if (!bm) continue;
 		const indent = raw.match(/^ */)?.[0].length ?? 0;
@@ -603,7 +675,12 @@ export async function carryNew(
 		const p = await store.get(prev);
 		// 전일 = 직전 근무일의 일일 진행 업무(실제로 한 일). 금일은 비워두고
 		// 당일에 일일 진행 업무를 채운 뒤 스크럼 생성 버튼으로 만든다.
-		if (p) doc.scrum.prev = dailyToBlock(dailyItemsOf(p));
+		if (p)
+			doc.scrum.prev = dailyToBlock(
+				dailyItemsOf(p),
+				p.scrum.today.issues,
+				p.scrum.today.collab,
+			);
 	}
 	return doc;
 }
@@ -614,7 +691,11 @@ function itemProgress(it: ListItem): number | "" {
 	return it.done ? 100 : "";
 }
 // 일일 진행 업무(체크리스트) → 전일 진행 업무 블록. 항목의 space 를 그대로 스페이스로 그룹핑(최초 등장 순서 유지).
-export function dailyToBlock(items: ListItem[]): Block {
+export function dailyToBlock(
+	items: ListItem[],
+	issues?: string,
+	collab?: string,
+): Block {
 	const order: string[] = [];
 	const bySpace = new Map<string, Task[]>();
 	for (const it of items ?? []) {
@@ -634,8 +715,8 @@ export function dailyToBlock(items: ListItem[]): Block {
 	}
 	return {
 		spaces: order.map((label) => ({ label, tasks: bySpace.get(label)! })),
-		issues: "없음",
-		collab: "없음",
+		issues: (issues || "").trim() || "없음",
+		collab: (collab || "").trim() || "없음",
 	};
 }
 

@@ -208,9 +208,11 @@ export function App() {
 			(it) => (it.key || "").trim() || (it.desc || "").trim(),
 		);
 		if (!items.length) return toast("일일 진행 업무에 먼저 항목을 추가하세요");
-		const block = dailyToBlock(items);
-		block.issues = (doc.scrum.today.issues || "").trim() || "없음";
-		block.collab = (doc.scrum.today.collab || "").trim() || "없음";
+		const block = dailyToBlock(
+			items,
+			doc.scrum.today.issues,
+			doc.scrum.today.collab,
+		);
 		doc.scrum.today = block;
 		applyTeams(
 			renderScrum(config.jiraBase, doc.scrum),

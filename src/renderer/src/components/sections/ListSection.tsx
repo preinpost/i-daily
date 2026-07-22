@@ -11,7 +11,7 @@ import {
 	renameListSpace,
 } from "../../lib/model";
 import { autoGrow, confirmReset } from "../../lib/ui";
-import { useReorder } from "../../lib/useDnd";
+import { useListItemDrop, useSpaceDrop } from "../../lib/useDnd";
 import { DragHandle } from "../DragHandle";
 import { GoButton } from "../GoButton";
 import { SubList } from "../SubList";
@@ -90,6 +90,8 @@ export function ListSection({
 	const none = groups[0]; // 항상 첫 번째 = 무그룹("")
 	const named = groups.slice(1);
 	const allLabels = named.map((g) => g.label);
+	// 무그룹 영역 드롭 — 다른 스페이스의 항목을 끌어다 놓으면 그룹 해제(무그룹으로 이동)
+	const noneDrop = useSpaceDrop(sec.items, "", commit);
 
 	function addItem(space: string) {
 		sec.items.push({
@@ -149,7 +151,13 @@ export function ListSection({
 				</button>
 			</h3>
 
-			<div className="grid gap-1.5">
+			<div
+				className={
+					"grid gap-2.5 rounded-[10px] " +
+					(noneDrop.over ? "ring-2 ring-accent/40" : "")
+				}
+				{...noneDrop.props}
+			>
 				{!sec.items.length && (
 					<div className="p-3.5 text-center text-[13px] text-ink-2">
 						+ 항목으로 오늘 한 일을 추가하세요 (전일/금일 드롭다운 원본)
@@ -186,34 +194,23 @@ export function ListSection({
 			))}
 
 			{/* 이슈·협업은 일일 진행 업무(마스터)에 두고, 스크럼 생성 시 금일 블록으로 반영 */}
-			<div className="mt-3 grid gap-x-3 gap-y-1.5 sm:grid-cols-2">
-				<div>
-					<label className="mb-[3px] block text-xs text-ink-2">
-						이슈 사항 <span className="opacity-70">— 데일리 스크럼에 반영</span>
-					</label>
-					<input
-						placeholder="없음"
-						value={doc.scrum.today.issues || ""}
-						onChange={(e) => {
-							doc.scrum.today.issues = e.target.value;
-							commit();
-						}}
-					/>
-				</div>
-				<div>
-					<label className="mb-[3px] block text-xs text-ink-2">
-						협업 및 기타{" "}
-						<span className="opacity-70">— 데일리 스크럼에 반영</span>
-					</label>
-					<input
-						placeholder="없음"
-						value={doc.scrum.today.collab || ""}
-						onChange={(e) => {
-							doc.scrum.today.collab = e.target.value;
-							commit();
-						}}
-					/>
-				</div>
+			<div className="mt-3 grid gap-x-3 gap-y-2.5 sm:grid-cols-2">
+				<MultiLineField
+					label="이슈 사항"
+					value={doc.scrum.today.issues || ""}
+					onChange={(v) => {
+						doc.scrum.today.issues = v;
+						commit();
+					}}
+				/>
+				<MultiLineField
+					label="협업 및 기타"
+					value={doc.scrum.today.collab || ""}
+					onChange={(v) => {
+						doc.scrum.today.collab = v;
+						commit();
+					}}
+				/>
 			</div>
 
 			{groupModalOpen && (
@@ -240,9 +237,19 @@ function ListSpaceGroup({
 }) {
 	const { commit } = useEditor();
 	const toast = useToast();
+	// 박스(빈 영역/라벨 줄 포함) 드롭 — 항목을 끌어다 놓으면 이 스페이스로 이동
+	const spaceDrop = useSpaceDrop(sec.items, group.label, commit);
 
 	return (
-		<div className="mb-2.5 mt-2.5 rounded-[10px] border border-dashed border-line bg-panel p-2.5">
+		<div
+			className={
+				"mb-2.5 mt-2.5 rounded-[10px] border bg-panel p-2.5 " +
+				(spaceDrop.over
+					? "border-solid border-accent"
+					: "border-dashed border-line")
+			}
+			{...spaceDrop.props}
+		>
 			<div className="mb-2 flex items-center gap-2">
 				<input
 					className="font-semibold"
@@ -286,16 +293,183 @@ function ListSpaceGroup({
 				</button>
 			</div>
 
-			{group.items.map(({ it, index }) => (
-				<ListItemRow
-					key={index}
-					sec={sec}
-					it={it}
-					index={index}
-					prev={prevMap[itemId(it)]}
-					spaceLabels={allLabels}
-				/>
-			))}
+			<div className="grid gap-2.5">
+				{group.items.map(({ it, index }) => (
+					<ListItemRow
+						key={index}
+						sec={sec}
+						it={it}
+						index={index}
+						prev={prevMap[itemId(it)]}
+						spaceLabels={allLabels}
+					/>
+				))}
+			</div>
+		</div>
+	);
+}
+
+type MetaRow = { text: string; subs: string[] };
+// 편집용 파싱 — 빈 메인도 보존(추가 직후 input 유지). 탭(\t) 시작 = 하위.
+function editParse(value: string): MetaRow[] {
+	const v = (value || "").trim();
+	if (!v || v === "없음") return [];
+	const items: MetaRow[] = [];
+	for (const raw of value.split("\n")) {
+		const isSub = raw.startsWith("\t");
+		const t = raw.replace(/^\t+/, "");
+		if (isSub) {
+			if (items.length) items[items.length - 1].subs.push(t);
+		} else {
+			items.push({ text: t, subs: [] });
+		}
+	}
+	return items;
+}
+// 직렬화 — 빈 메인/빈 하위는 제외(저장·마크다운 출력용).
+function editSerialize(items: MetaRow[]): string {
+	const lines: string[] = [];
+	for (const it of items) {
+		if (!it.text.trim()) continue;
+		lines.push(it.text);
+		for (const s of it.subs) if (s.trim()) lines.push("\t" + s);
+	}
+	return lines.join("\n");
+}
+// 이슈·협업 입력 — 라벨 옆 +추가 로 메인 항목을 만들고, 각 항목에 +하위 로 메모를 단다.
+// value 는 개행(\n) 문자열(하위=탭 prefix). 로컬 state 로 추가 직후 빈 input 유지.
+function MultiLineField({
+	label,
+	value,
+	onChange,
+}: {
+	label: string;
+	value: string;
+	onChange: (v: string) => void;
+}) {
+	const [items, setItems] = useState<MetaRow[]>(() => editParse(value));
+	const last = useRef(value);
+	useEffect(() => {
+		if (value !== last.current) {
+			setItems(editParse(value));
+			last.current = value;
+		}
+	}, [value]);
+	const emit = (next: MetaRow[]) => {
+		setItems(next);
+		const s = editSerialize(next);
+		last.current = s;
+		onChange(s);
+	};
+	const setMain = (i: number, t: string) => {
+		const n = items.slice();
+		n[i] = { ...n[i], text: t };
+		emit(n);
+	};
+	const setSub = (i: number, si: number, t: string) => {
+		const n = items.slice();
+		const subs = n[i].subs.slice();
+		subs[si] = t;
+		n[i] = { ...n[i], subs };
+		emit(n);
+	};
+	const addMain = () => emit(items.concat({ text: "", subs: [] }));
+	const removeMain = (i: number) => {
+		const n = items.slice();
+		n.splice(i, 1);
+		emit(n);
+	};
+	const addSub = (i: number) => {
+		const n = items.slice();
+		n[i] = { ...n[i], subs: n[i].subs.concat("") };
+		emit(n);
+	};
+	const removeSub = (i: number, si: number) => {
+		const n = items.slice();
+		const subs = n[i].subs.slice();
+		subs.splice(si, 1);
+		n[i] = { ...n[i], subs };
+		emit(n);
+	};
+	return (
+		<div>
+			<div className="mb-[3px] flex items-center gap-2">
+				<span className="text-xs text-ink-2">
+					{label} <span className="opacity-70">— 데일리 스크럼에 반영</span>
+				</span>
+				<button
+					type="button"
+					className="btn btn-tiny btn-ghost ml-auto"
+					title={`${label} 항목 추가`}
+					onClick={addMain}
+				>
+					+ 추가
+				</button>
+			</div>
+			{items.length === 0 ? (
+				<p className="m-0 py-1 text-[12px] text-ink-2 opacity-70">
+					+ 추가로 {label}을(를) 입력하세요
+				</p>
+			) : (
+				<div className="grid gap-2">
+					{items.map((it, i) => (
+						<div
+							key={i}
+							className="rounded-lg bg-panel-2 p-2 transition-colors"
+						>
+							<div className="flex items-center gap-1.5">
+								<input
+									className="flex-1"
+									placeholder={`${label} 항목`}
+									value={it.text}
+									onChange={(e) => setMain(i, e.target.value)}
+								/>
+								<button
+									type="button"
+									className="btn btn-tiny btn-ghost"
+									disabled={!it.text.trim()}
+									title="이 항목에 하위 메모 추가"
+									onClick={() => addSub(i)}
+								>
+									+하위
+								</button>
+								<button
+									type="button"
+									className="btn btn-icon btn-tiny"
+									title="항목 삭제"
+									onClick={() => removeMain(i)}
+								>
+									✕
+								</button>
+							</div>
+							{it.subs.length > 0 && (
+								<div className="mt-1.5 grid gap-1.5 pl-1">
+									{it.subs.map((s, si) => (
+										<div key={si} className="flex items-center gap-1.5">
+											<span className="flex-none text-[12px] text-ink-2 opacity-60">
+												↳
+											</span>
+											<input
+												className="flex-1"
+												value={s}
+												onChange={(e) => setSub(i, si, e.target.value)}
+											/>
+											<button
+												type="button"
+												className="btn btn-icon btn-tiny"
+												title="하위 삭제"
+												onClick={() => removeSub(i, si)}
+											>
+												−
+											</button>
+										</div>
+									))}
+								</div>
+							)}
+						</div>
+					))}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -383,7 +557,7 @@ function ListItemRow({
 	const [groupOpen, setGroupOpen] = useState(false); // 새 스페이스 모달(이 항목 이동용)
 	if (!it.subs) it.subs = [];
 	const descRef = useRef<HTMLTextAreaElement>(null);
-	const { over, props } = useReorder(sec.items, index, commit);
+	const { over, props } = useListItemDrop(sec.items, index, it, commit);
 
 	useEffect(() => {
 		autoGrow(descRef.current);
@@ -431,13 +605,6 @@ function ListItemRow({
 			onContextMenu={onRowContextMenu}
 		>
 			<DragHandle arr={sec.items} index={index} />
-
-			<span
-				className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--accent)_18%,var(--chip))] text-[12.5px] font-bold tabular-nums text-accent"
-				title={`일일 진행 업무 ${index + 1}번`}
-			>
-				{index + 1}
-			</span>
 
 			<span className="flex flex-none items-center gap-0.5">
 				<input

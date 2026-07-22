@@ -70,22 +70,34 @@ export function DayCard({
 			</div>
 
 			<div className="p-5">
-				<SectionList curDate={curDate} onGenerateScrum={onGenerateScrum} />
-
-				<div
-					id="teams-output"
-					className="mb-2 mt-[22px] flex items-center gap-2.5"
-				>
-					<h3 className="m-0 text-sm">Teams 붙여넣기용 (데일리 스크럼)</h3>
-					<span className="text-xs text-ink-2">채팅방에 그대로 복붙</span>
-					<div className="flex-1" />
-					<button type="button" className="btn btn-primary" onClick={onCopy}>
-						📋 복사
-					</button>
-				</div>
-				<pre className="m-0 overflow-x-auto whitespace-pre rounded-xl border border-line bg-mono p-4 font-mono text-[13px] leading-[1.55] text-ink">
-					{teams}
-				</pre>
+				<SectionList
+					curDate={curDate}
+					onGenerateScrum={onGenerateScrum}
+					teamsBlock={
+						<>
+							<div
+								id="teams-output"
+								className="mb-2 mt-[22px] flex items-center gap-2.5"
+							>
+								<h3 className="m-0 text-sm">
+									Teams 붙여넣기용 (데일리 스크럼)
+								</h3>
+								<span className="text-xs text-ink-2">채팅방에 그대로 복붙</span>
+								<div className="flex-1" />
+								<button
+									type="button"
+									className="btn btn-primary"
+									onClick={onCopy}
+								>
+									📋 복사
+								</button>
+							</div>
+							<pre className="mx-0 mb-[22px] mt-0 overflow-x-auto whitespace-pre rounded-xl border border-line bg-mono p-4 font-mono text-[13px] leading-[1.55] text-ink">
+								{teams}
+							</pre>
+						</>
+					}
+				/>
 			</div>
 		</section>
 	);

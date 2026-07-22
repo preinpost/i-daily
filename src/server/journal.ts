@@ -122,7 +122,16 @@ export function journalRoutes(backend: Backend): Hono<{ Variables: Vars }> {
 		const count = items.filter(
 			(it) => (it.key || "").trim() || (it.desc || "").trim(),
 		).length;
-		return c.json({ block: dailyToBlock(items), items, from: prev, count });
+		return c.json({
+			block: dailyToBlock(
+				items,
+				pdoc?.scrum.today.issues,
+				pdoc?.scrum.today.collab,
+			),
+			items,
+			from: prev,
+			count,
+		});
 	});
 
 	app.post(`${DATE}/carry`, async (c) => {

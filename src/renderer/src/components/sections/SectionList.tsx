@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useEditor } from "../../context/EditorContext";
 import { RawSection } from "./RawSection";
 import { ListSection } from "./ListSection";
@@ -6,9 +7,11 @@ import { ScrumSection } from "./ScrumSection";
 export function SectionList({
 	curDate,
 	onGenerateScrum,
+	teamsBlock,
 }: {
 	curDate: string;
 	onGenerateScrum: () => void;
+	teamsBlock?: ReactNode;
 }) {
 	const { doc, commit } = useEditor();
 	return (
@@ -16,12 +19,14 @@ export function SectionList({
 			{doc.sections.map((sec, idx) => {
 				if (sec.kind === "scrum")
 					return (
-						<ScrumSection
-							key={idx}
-							title={sec.title}
-							curDate={curDate}
-							onGenerate={onGenerateScrum}
-						/>
+						<div key={idx}>
+							<ScrumSection
+								title={sec.title}
+								curDate={curDate}
+								onGenerate={onGenerateScrum}
+							/>
+							{teamsBlock}
+						</div>
 					);
 				if (sec.kind === "list")
 					return <ListSection key={idx} sec={sec} curDate={curDate} />;

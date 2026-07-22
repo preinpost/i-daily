@@ -160,3 +160,21 @@ test("renderScrumHtml: 굵은 헤더 · 중첩 ul · 티켓 링크", () => {
 	expect(html).toContain('<a href="https://jira.test/browse/K-1">[K-1]</a>');
 	expect(html).toContain("<ul>");
 });
+
+test("renderScrum/Html: 빈 스페이스 라벨을 [?] 아닌 [스페이스 없음]으로 표시", () => {
+	// space 미지정 항목 → dailyToBlock 은 label="" 그룹으로 묶음
+	const block = dailyToBlock([
+		{ done: false, key: "OPIT-1", desc: "no space", subs: [] },
+	]);
+	expect(block.spaces[0].label).toBe("");
+	const s = {
+		prev: block,
+		today: { spaces: [], issues: "없음", collab: "없음" },
+	};
+	const md = renderScrum(JIRA, s as any);
+	expect(md).toContain("**[스페이스 없음]**");
+	expect(md).not.toContain("[?]");
+	const html = renderScrumHtml(JIRA, s as any);
+	expect(html).toContain("[스페이스 없음]");
+	expect(html).not.toContain("[?]");
+});

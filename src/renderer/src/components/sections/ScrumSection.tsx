@@ -3,8 +3,38 @@ import { useToast } from "../Toast";
 import { api } from "../../lib/api";
 import { ticketUrl, todayDailyItems } from "../../lib/model";
 import { confirmReset } from "../../lib/ui";
-import { emptyBlock, fmtMeta } from "../../../../shared/model";
+import { emptyBlock, fmtMeta, parseMetaLines } from "../../../../shared/model";
 import type { Block, Task } from "../../types";
+
+// 전일 블록의 이슈·협업 읽기 전용 렌더 — 2레벨(메인 + ↳ 하위) 구조.
+function MetaRead({ label, value }: { label: string; value: string }) {
+	const items = parseMetaLines(value);
+	if (!items.length) return null;
+	return (
+		<div className="px-2 py-1 text-[12px] text-ink-2">
+			<div className="mb-0.5 font-bold tracking-[0.02em]">{label}</div>
+			<div className="grid gap-[2px] pl-1">
+				{items.map((it, i) => (
+					<div key={i}>
+						<div className="flex items-baseline gap-1.5 leading-[1.5] text-ink">
+							<span className="flex-none opacity-60">+</span>
+							<span className="min-w-0 break-words">{it.text}</span>
+						</div>
+						{it.subs.map((s, si) => (
+							<div
+								key={si}
+								className="flex items-baseline gap-1.5 pl-3 leading-[1.5]"
+							>
+								<span className="flex-none opacity-60">↳</span>
+								<span className="min-w-0 break-words">{s}</span>
+							</div>
+						))}
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
 
 // 스페이스·태스크 수 집계(내용 있는 것만).
 const taskCount = (b: Block): number =>
@@ -220,16 +250,8 @@ function ReadOnlyBlock({
 						))}
 				</div>
 			))}
-			{issues && issues !== "없음" && (
-				<div className="px-2 py-1 text-[12px] text-ink-2">
-					이슈 사항: <span className="text-ink">{issues}</span>
-				</div>
-			)}
-			{collab && collab !== "없음" && (
-				<div className="px-2 py-1 text-[12px] text-ink-2">
-					협업 및 기타: <span className="text-ink">{collab}</span>
-				</div>
-			)}
+			<MetaRead label="이슈 사항" value={issues} />
+			<MetaRead label="협업 및 기타" value={collab} />
 		</div>
 	);
 
