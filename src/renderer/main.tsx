@@ -13,6 +13,13 @@ if (!(globalThis as unknown as { api?: unknown }).api) {
 	(globalThis as unknown as { api: typeof webApi }).api = webApi;
 }
 
+// PWA: 서비스워커 등록(설치 가능 조건 충족). 프로덕션 빌드에서만.
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+	window.addEventListener("load", () => {
+		navigator.serviceWorker.register("/sw.js").catch(() => {});
+	});
+}
+
 createRoot(document.getElementById("root")!).render(
 	<StrictMode>
 		<ToastProvider>
