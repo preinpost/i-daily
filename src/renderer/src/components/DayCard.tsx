@@ -2,6 +2,7 @@ import { SectionList } from "./sections/SectionList";
 
 export function DayCard({
 	curDate,
+	today,
 	onShift,
 	onPickDate,
 	onCarry,
@@ -11,6 +12,7 @@ export function DayCard({
 	onCopyMd,
 }: {
 	curDate: string;
+	today?: string | null;
 	onShift: (days: number) => void;
 	onPickDate: (date: string) => void;
 	onCarry: () => void;
@@ -47,6 +49,16 @@ export function DayCard({
 					>
 						›
 					</button>
+					{today && curDate !== today && (
+						<button
+							type="button"
+							className="btn btn-tiny btn-ghost"
+							title="오늘 날짜로 이동"
+							onClick={() => onPickDate(today)}
+						>
+							↩ 오늘로 가기
+						</button>
+					)}
 				</div>
 				<div className="flex-1" />
 				<div className="flex flex-wrap gap-2">

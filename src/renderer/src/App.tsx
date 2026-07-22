@@ -367,6 +367,7 @@ export function App() {
 			<main className="mx-auto max-w-[1080px] px-[18px]">
 				<DayCard
 					curDate={curDate}
+					today={meta.today}
 					onShift={(days) => loadDate(shiftDate(curDate, days))}
 					onPickDate={(date) => loadDate(date)}
 					onCarry={carry}
