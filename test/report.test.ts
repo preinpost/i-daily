@@ -19,6 +19,13 @@ test("weekWindow: 월요일 실행 → from=지난 금, to=이번 목", () => {
 	const mon = new Date(2026, 6, 13); // 2026-07-13 월
 	expect(weekWindow(mon)).toEqual({ from: "2026-07-10", to: "2026-07-16" });
 });
+test("weekWindow: KST 금요일 오전(UTC는 아직 목요일) → 새 주기로 어긋남 없음", () => {
+	// UTC 2026-07-23 23:30 (목) = KST 2026-07-24 08:30 (금) → 새 주기 시작
+	expect(weekWindow(new Date("2026-07-23T23:30:00Z"))).toEqual({
+		from: "2026-07-24",
+		to: "2026-07-30",
+	});
+});
 
 const rows = (): TaskRow[] => [
 	{

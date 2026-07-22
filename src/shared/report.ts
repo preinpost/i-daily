@@ -1,32 +1,24 @@
 // report.ts — 주간업무보고(Fri~Thu) 집계. 순수 로직(부작용 없음 → 테스트 대상).
 // 하이브리드 원칙: 티켓키·진척%·마감일 등 "숫자/식별자"는 여기서 결정적으로 확정하고,
 // 결정적 집계(buildWeeklyDigest) + Teams 붙여넣기용 텍스트(renderDigestText) 생성.
-import { fmtMeta, type TaskRow } from "./model.ts";
+import { fmtMeta, kstParts, type TaskRow } from "./model.ts";
 
 // ───────────────────────── 기간 계산 (전주 금 ~ 금주 목) ─────────────────────────
-// 로컬 날짜 기준(TZ 안전). Thu=4. 기준일이 속한 보고주기의 목요일(to)과 그 6일 전 금요일(from).
+// KST 날짜 기준(Workers 등 UTC 런타임에서도 kstParts 로 보정). Thu=4. 기준일이 속한
+// 보고주기의 목요일(to)과 그 6일 전 금요일(from).
 //  - 목요일 실행 → to=오늘, from=지난 금요일
 //  - 금요일 실행 → 새 주기 시작 → to=다음 목요일, from=오늘(금)
-function toYmd(d: Date): string {
-	const y = d.getFullYear();
-	const m = String(d.getMonth() + 1).padStart(2, "0");
-	const day = String(d.getDate()).padStart(2, "0");
-	return `${y}-${m}-${day}`;
-}
-function addDays(d: Date, n: number): Date {
-	const c = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-	c.setDate(c.getDate() + n);
-	return c;
-}
+const ymdUtc = (d: Date): string =>
+	`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 export function weekWindow(ref: Date = new Date()): {
 	from: string;
 	to: string;
 } {
-	const dow = ref.getDay(); // 0=일 … 4=목 … 6=토
+	const { y, m, day, dow } = kstParts(ref);
 	const untilThu = (4 - dow + 7) % 7; // 기준일 이후(포함) 첫 목요일까지 일수
-	const to = addDays(ref, untilThu); // 보고주기 끝 = 목요일
-	const from = addDays(to, -6); // 시작 = 그 주 금요일
-	return { from: toYmd(from), to: toYmd(to) };
+	const to = new Date(Date.UTC(y, m - 1, day + untilThu)); // 말일 넘침 자동 처리
+	const from = new Date(to.getTime() - 6 * 86400000); // 시작 = 그 주 금요일
+	return { from: ymdUtc(from), to: ymdUtc(to) };
 }
 
 // ───────────────────────── digest 집계 ─────────────────────────
@@ -124,17 +116,15 @@ export function buildWeeklyDigest(
 			bySpace.set(label, []);
 			spaceOrder.push(label);
 		}
-		bySpace
-			.get(label)!
-			.push({
-				key: t.key,
-				desc: t.desc,
-				progress: t.progress,
-				due: t.due,
-				dates: t.dates,
-				notes: t.notes,
-				subs: t.subs,
-			});
+		bySpace.get(label)!.push({
+			key: t.key,
+			desc: t.desc,
+			progress: t.progress,
+			due: t.due,
+			dates: t.dates,
+			notes: t.notes,
+			subs: t.subs,
+		});
 	}
 	const spaces: DigestSpace[] = spaceOrder.map((label) => ({
 		label,

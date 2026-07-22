@@ -145,16 +145,26 @@ export const emptyDoc = (date: string, owner = ""): Doc => ({
 	scrum: emptyScrum(),
 });
 export const clone = <T>(o: T): T => structuredClone(o);
-// 로컬 타임존 기준 오늘 날짜. toISOString()은 UTC라 KST 오전 9시 전에 전날로 어긋남.
-export const todayStr = (): string => {
-	const d = new Date();
-	return (
-		d.getFullYear() +
-		"-" +
-		String(d.getMonth() + 1).padStart(2, "0") +
-		"-" +
-		String(d.getDate()).padStart(2, "0")
-	);
+// 업무 기준 시간대는 KST(UTC+9). Workers 런타임은 호스트 TZ와 무관하게 Date가 항상
+// UTC라 로컬 getter(getDate/getDay 등)도 UTC 값을 돌려준다 → KST 00~09시에 하루 전으로
+// 어긋남. 명시적 오프셋 + UTC getter로 worker/browser/node 어디서나 KST 달력 값을 만든다.
+export function kstParts(now: Date = new Date()): {
+	y: number;
+	m: number; // 1~12
+	day: number;
+	dow: number; // 0=일 … 6=토
+} {
+	const k = new Date(now.getTime() + 9 * 3600 * 1000);
+	return {
+		y: k.getUTCFullYear(),
+		m: k.getUTCMonth() + 1,
+		day: k.getUTCDate(),
+		dow: k.getUTCDay(),
+	};
+}
+export const todayStr = (now: Date = new Date()): string => {
+	const { y, m, day } = kstParts(now);
+	return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 };
 
 // ───────────────────────── 데일리 스크럼 렌더러 (구조 → 마크다운) ─────────────────────────

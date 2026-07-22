@@ -8,10 +8,29 @@ import {
 	serializeDoc,
 	dailyToBlock,
 	renderScrumHtml,
+	todayStr,
+	kstParts,
 } from "../src/shared/model.ts";
 
 // jiraBase 는 렌더 함수에 인자로 전달(전역 아님). host만 — /browse/ 는 자동.
 const JIRA = "https://jira.test";
+
+// ── KST 날짜 보정 (Workers 등 UTC 런타임에서 KST 00~09시 어긋남 방지) ──
+test("todayStr: UTC 자정~09시(KST 다음날)에도 KST 날짜 반환", () => {
+	// UTC 2026-07-21 23:58 = KST 2026-07-22 08:58 → 22일
+	expect(todayStr(new Date("2026-07-21T23:58:00Z"))).toBe("2026-07-22");
+});
+test("todayStr: KST 자정 경계 — 15:00Z 이전은 당일, 이후는 다음날", () => {
+	// UTC 14:59:59 = KST 23:59:59 → 21일
+	expect(todayStr(new Date("2026-07-21T14:59:59Z"))).toBe("2026-07-21");
+	// UTC 15:00:00 = KST 00:00:00 → 22일
+	expect(todayStr(new Date("2026-07-21T15:00:00Z"))).toBe("2026-07-22");
+});
+test("kstParts: 월말 넘침 · 요일(KST 기준)", () => {
+	// UTC 2026-07-31 16:00 = KST 2026-08-01 01:00 (토)
+	const p = kstParts(new Date("2026-07-31T16:00:00Z"));
+	expect(p).toEqual({ y: 2026, m: 8, day: 1, dow: 6 });
+});
 
 test("scrum 왕복: 태스크·하위·마감 연도추론 보존", () => {
 	const md = [
