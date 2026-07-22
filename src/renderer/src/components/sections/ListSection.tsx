@@ -160,7 +160,7 @@ export function ListSection({
 			>
 				{!sec.items.length && (
 					<div className="p-3.5 text-center text-[13px] text-ink-2">
-						+ 항목으로 오늘 한 일을 추가하세요 (전일/금일 드롭다운 원본)
+						+ 항목으로 오늘 한 일을 추가하세요
 					</div>
 				)}
 				{none.items.map(({ it, index }) => (
