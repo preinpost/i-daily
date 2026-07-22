@@ -1,4 +1,5 @@
 import { useEditor } from "../../context/EditorContext";
+import { MarkdownEditor } from "../MarkdownEditor";
 import { useToast } from "../Toast";
 import { rawHasContent } from "../../lib/model";
 import { confirmReset } from "../../lib/ui";
@@ -41,12 +42,11 @@ export function RawSection({ sec, onRemove }: { sec: RawSec; onRemove: () => voi
           ✕
         </button>
       </div>
-      <textarea
-        className="min-h-[76px] resize-y font-mono text-[13.5px] leading-[1.6]"
+      <MarkdownEditor
         value={sec.body || ""}
         placeholder="마크다운으로 자유롭게…"
-        onChange={(e) => {
-          sec.body = e.target.value;
+        onChange={(md) => {
+          sec.body = md;
           commit();
         }}
       />
