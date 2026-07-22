@@ -6,21 +6,10 @@ import type {
 	Doc,
 	ListItem,
 	Meta,
-	Scrum,
 	Section,
-	Space,
-	Task,
 	Ticket,
 	Which,
 } from "../types";
-
-type CopySrc = {
-	key?: string;
-	desc?: string;
-	progress?: number | "";
-	due?: string;
-	subs?: string[];
-};
 
 export const WD = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -93,24 +82,6 @@ export function listHasContent(sec: { items?: ListItem[] }): boolean {
 export function rawHasContent(sec: { body?: string }): boolean {
 	return !!(sec.body || "").trim();
 }
-export function blockHasContent(b?: Block): boolean {
-	if (!b) return false;
-	if ((b.issues || "").trim() && (b.issues || "").trim() !== "없음")
-		return true;
-	if ((b.collab || "").trim() && (b.collab || "").trim() !== "없음")
-		return true;
-	return (b.spaces || []).some(
-		(sp) =>
-			(sp.label || "").trim() ||
-			(sp.tasks || []).some(
-				(t) =>
-					(t.key || "").trim() ||
-					(t.desc || "").trim() ||
-					(t.subs || []).some((s) => (s || "").trim()),
-			),
-	);
-}
-
 export function normalizeDoc(d: Doc): void {
 	if (!d.scrum) d.scrum = { prev: emptyBlock(), today: emptyBlock() };
 	(["prev", "today"] as Which[]).forEach((w) => {
@@ -133,6 +104,7 @@ export function normalizeDoc(d: Doc): void {
 				if (!it.subs) it.subs = [];
 				if (it.progress == null) it.progress = "";
 				if (it.due == null) it.due = "";
+				if (it.space == null) it.space = "";
 			});
 		} else if (s.kind === "raw" && s.body == null) s.body = "";
 	});
@@ -150,15 +122,6 @@ export function todayDailyItems(doc: Doc): ListItem[] {
 	const s = listSection(doc);
 	return s ? s.items || [] : [];
 }
-export function snapListItem(it: ListItem): Task {
-	return {
-		key: it.key || "",
-		desc: it.desc || "",
-		progress: typeof it.progress === "number" ? it.progress : "",
-		due: it.due || "",
-		subs: (it.subs || []).slice(),
-	};
-}
 // 일일 항목 ↔ 스크럼 태스크 매칭 ID. 티켓 키 우선, 없으면 설명.
 export function itemId(it?: { key?: string; desc?: string } | null): string {
 	if (!it) return "";
@@ -167,118 +130,6 @@ export function itemId(it?: { key?: string; desc?: string } | null): string {
 	const desc = (it.desc || "").trim();
 	return desc ? "d:" + desc : "";
 }
-export function dailyItemLabel(
-	it: { key?: string; desc?: string },
-	order?: number | null,
-): string {
-	const k = (it.key || "").trim();
-	const d = (it.desc || "").trim();
-	const base = k && d ? k + " · " + d : k || d || "(빈 항목)";
-	return order != null && order > 0 ? order + ". " + base : base;
-}
-// 일일 진행 업무에서의 1-based 순번. 없으면 null (스크럼 고아 항목 등).
-export function dailyOrder(doc: Doc, id: string): number | null {
-	if (!id) return null;
-	const idx = todayDailyItems(doc).findIndex((it) => itemId(it) === id);
-	return idx >= 0 ? idx + 1 : null;
-}
-export function dailyOptions(doc: Doc): ListItem[] {
-	return todayDailyItems(doc).filter((it) => !!itemId(it));
-}
-export function findDailyById(doc: Doc, id: string): ListItem | null {
-	if (!id) return null;
-	return dailyOptions(doc).find((it) => itemId(it) === id) || null;
-}
-export function usedIdsInBlock(block: Block, exceptTask?: Task): Set<string> {
-	const s = new Set<string>();
-	(block.spaces || []).forEach((sp) =>
-		(sp.tasks || []).forEach((t) => {
-			if (exceptTask && t === exceptTask) return;
-			const id = itemId(t);
-			if (id) s.add(id);
-		}),
-	);
-	return s;
-}
-// 일일 마스터 → 스크럼 태스크의 키/설명/하위만 동기화(진척·마감은 유지).
-export function applyDailyMaster(
-	t: Task,
-	src: { key?: string; desc?: string; subs?: string[] },
-): void {
-	if (!t || !src) return;
-	t.key = src.key || "";
-	t.desc = src.desc || "";
-	t.subs = (src.subs || []).slice();
-}
-// 일일 항목이 바뀌면 같은 ID 를 쓰던 전일/금일 태스크를 따라가게 함.
-export function syncScrumFromDailyChange(
-	scrum: Scrum,
-	prevId: string,
-	it: ListItem,
-): void {
-	const newId = itemId(it);
-	(["prev", "today"] as Which[]).forEach((which) => {
-		(scrum[which].spaces || []).forEach((sp) =>
-			(sp.tasks || []).forEach((t) => {
-				const tid = itemId(t);
-				if ((prevId && tid === prevId) || (newId && tid === newId))
-					applyDailyMaster(t, it);
-			}),
-		);
-	});
-}
-export function isScrumDup(block: Block, it: ListItem): boolean {
-	const id = itemId(it);
-	if (!id) return false;
-	return usedIdsInBlock(block).has(id);
-}
-// 일일 진행 항목 → 스크럼 블록으로 복사. 결과 { ok, msg } 반환(토스트는 호출부).
-// targetSp 없으면 라벨 없는 스페이스에 넣거나 새로 만든다.
-export function copyListItemToScrum(
-	scrum: Scrum,
-	which: Which,
-	it: CopySrc,
-	targetSp?: Space | null,
-): { ok: boolean; msg: string } {
-	if (!itemId(it)) return { ok: false, msg: "빈 항목은 복사할 수 없어요" };
-	const block = scrum[which];
-	if (isScrumDup(block, it as ListItem))
-		return {
-			ok: false,
-			msg: "이미 " + (which === "prev" ? "전일" : "금일") + "에 있어요",
-		};
-	let sp = targetSp || null;
-	if (!sp) {
-		sp = (block.spaces || []).find((s) => !(s.label || "").trim()) || null;
-		if (!sp) {
-			sp = { label: "", tasks: [] };
-			block.spaces.push(sp);
-		}
-	}
-	sp.tasks.push({
-		key: it.key || "",
-		desc: it.desc || "",
-		progress: typeof it.progress === "number" ? it.progress : "",
-		due: it.due || "",
-		subs: (it.subs || []).slice(),
-	});
-	return {
-		ok: true,
-		msg:
-			(it.key || it.desc) +
-			" → " +
-			(which === "prev" ? "전일" : "금일") +
-			" 등록",
-	};
-}
-
-export function isMissing(t: Task): boolean {
-	return (
-		(t.progress === "" || t.progress == null || t.due === "") &&
-		!!(t.key || t.desc)
-	);
-}
-
 /* ── 티켓 → 일일 항목 보장 ── */
 export function ticketToItem(t: {
 	key?: string;
@@ -365,5 +216,42 @@ export function mergeSpaceLabels(
 			for (const sp of doc.scrum[w]?.spaces || []) push(sp.label || "");
 		}
 	}
+	if (doc?.sections) {
+		for (const sec of doc.sections)
+			if (sec.kind === "list")
+				for (const it of sec.items || []) push(it.space || "");
+	}
 	return out;
+}
+
+/* ── 일일 진행 업무 스페이스 그룹핑 (데일리 스크럼처럼 보여주기) ── */
+export type ListGroup = {
+	label: string; // "" = 무그룹(기본 영역)
+	items: { it: ListItem; index: number }[]; // index = 원본 배열상 절대 위치(순번 배지·드래그에 사용)
+};
+// 원본 배열 순서/인덱스는 보존하면서 space 별로 묶음. 무그룹("")은 항상 첫 번째, 이후 최초 등장 순.
+export function groupListItems(items: ListItem[]): ListGroup[] {
+	const order: string[] = [""];
+	const bucket = new Map<string, { it: ListItem; index: number }[]>([["", []]]);
+	items.forEach((it, index) => {
+		const label = (it.space || "").trim();
+		let arr = bucket.get(label);
+		if (!arr) {
+			arr = [];
+			bucket.set(label, arr);
+			order.push(label);
+		}
+		arr.push({ it, index });
+	});
+	return order.map((label) => ({ label, items: bucket.get(label) ?? [] }));
+}
+// 그룹(스페이스) 라벨 일괄 수정 — 해당 라벨을 쓰는 모든 항목의 space 를 새 값으로 변경.
+export function renameListSpace(
+	items: ListItem[],
+	oldLabel: string,
+	newLabel: string,
+): void {
+	const from = (oldLabel || "").trim();
+	const to = (newLabel || "").trim();
+	for (const it of items) if ((it.space || "").trim() === from) it.space = to;
 }

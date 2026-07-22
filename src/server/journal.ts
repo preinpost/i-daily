@@ -10,6 +10,7 @@ import {
 	dayResponse,
 	serializeDoc,
 	carryNew,
+	dailyItemsOf,
 	dailyToBlock,
 	isConfigured,
 	type Config,
@@ -117,15 +118,7 @@ export function journalRoutes(backend: Backend): Hono<{ Variables: Vars }> {
 		const prev = earlier.length ? earlier[earlier.length - 1] : null;
 		if (!prev) return c.json({ block: null, items: [], from: null, count: 0 });
 		const pdoc = await store.get(prev);
-		const listSec: any = pdoc?.sections.find((s) => s.kind === "list");
-		const items: ListItem[] = (listSec?.items ?? []).map((it: ListItem) => ({
-			done: !!it.done,
-			key: it.key || "",
-			desc: it.desc || "",
-			progress: it.progress ?? "",
-			due: it.due || "",
-			subs: (it.subs || []).slice(),
-		}));
+		const items: ListItem[] = pdoc ? dailyItemsOf(pdoc) : [];
 		const count = items.filter(
 			(it) => (it.key || "").trim() || (it.desc || "").trim(),
 		).length;

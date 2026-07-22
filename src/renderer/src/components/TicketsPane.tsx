@@ -2,12 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useEditor } from "../context/EditorContext";
 import { useToast } from "./Toast";
 import { useContextMenu } from "./ContextMenu";
-import {
-	copyListItemToScrum,
-	ensureDailyItem,
-	kanbanColumns,
-} from "../lib/model";
-import type { Ticket, Which } from "../types";
+import { ensureDailyItem, kanbanColumns } from "../lib/model";
+import type { Ticket } from "../types";
 
 export function TicketsPane({ active }: { active: boolean }) {
 	const { doc, commit } = useEditor();
@@ -85,14 +81,6 @@ export function TicketsPane({ active }: { active: boolean }) {
 				: t.key + " 이미 일일에 있어요",
 		);
 	}
-	function addToScrum(which: Which, t: Ticket) {
-		const r = ensureDailyItem(doc, t);
-		if ("error" in r) return toast(r.error);
-		const res = copyListItemToScrum(doc.scrum, which, r.item, null);
-		toast(res.msg);
-		if (res.ok || r.added) commit();
-	}
-
 	return (
 		<div
 			hidden={!active}
@@ -176,14 +164,6 @@ export function TicketsPane({ active }: { active: boolean }) {
 														{
 															label: "일일 진행 업무에 추가",
 															onClick: () => addToDaily(t),
-														},
-														{
-															label: "전일 진행 업무에 추가",
-															onClick: () => addToScrum("prev", t),
-														},
-														{
-															label: "금일 진행 업무에 추가",
-															onClick: () => addToScrum("today", t),
 														},
 													]);
 												}}

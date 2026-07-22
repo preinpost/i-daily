@@ -5,6 +5,7 @@ export function DayCard({
 	onShift,
 	onPickDate,
 	onCarry,
+	onGenerateScrum,
 	teams,
 	onCopy,
 	onCopyMd,
@@ -13,6 +14,7 @@ export function DayCard({
 	onShift: (days: number) => void;
 	onPickDate: (date: string) => void;
 	onCarry: () => void;
+	onGenerateScrum: () => void;
 	teams: string;
 	onCopy: () => void;
 	onCopyMd: () => void;
@@ -59,7 +61,7 @@ export function DayCard({
 					<button
 						type="button"
 						className="btn btn-ghost"
-						title="직전 근무일 '금일 진행 업무'를 이 날짜 '전일'로 이월하고 초안을 채웁니다"
+						title="직전 근무일 '일일 진행 업무'를 이 날짜 '전일 진행 업무'로 이월하고 초안을 채웁니다"
 						onClick={onCarry}
 					>
 						↧ 전일 이월
@@ -68,9 +70,12 @@ export function DayCard({
 			</div>
 
 			<div className="p-5">
-				<SectionList curDate={curDate} />
+				<SectionList curDate={curDate} onGenerateScrum={onGenerateScrum} />
 
-				<div className="mb-2 mt-[22px] flex items-center gap-2.5">
+				<div
+					id="teams-output"
+					className="mb-2 mt-[22px] flex items-center gap-2.5"
+				>
 					<h3 className="m-0 text-sm">Teams 붙여넣기용 (데일리 스크럼)</h3>
 					<span className="text-xs text-ink-2">채팅방에 그대로 복붙</span>
 					<div className="flex-1" />

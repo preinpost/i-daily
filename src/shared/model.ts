@@ -19,6 +19,7 @@ export type ListItem = {
 	progress?: number | "";
 	due?: string;
 	subs?: string[];
+	space?: string; // 소속 스페이스 라벨(데일리 스크럼과 동일 개념). 없으면 무그룹.
 };
 export type Section =
 	| { title: string; kind: "scrum" }
@@ -121,7 +122,6 @@ export function ticketUrl(jiraBase: string, key: string): string {
 	const path = /\/browse$/i.test(base) ? base : base + "/browse";
 	return `${path}/${(key || "").trim()}`;
 }
-
 
 // ───────────────────────── 모델 헬퍼 ─────────────────────────
 export const emptyBlock = (): Block => ({
@@ -237,7 +237,12 @@ export function esc(x: string): string {
 		.replace(/>/g, "&gt;");
 }
 // 태스크 머리(HTML). escDesc/escMeta는 이미 escape된 값.
-function htmlHead(jiraBase: string, key: string, escDesc: string, escMeta: string): string {
+function htmlHead(
+	jiraBase: string,
+	key: string,
+	escDesc: string,
+	escMeta: string,
+): string {
 	if (!key) return (escDesc || "(내용)") + escMeta;
 	const url = ticketUrl(jiraBase, key);
 	const anchor = url ? `<a href="${url}">[${esc(key)}]</a>` : `[${esc(key)}]`;
@@ -278,14 +283,45 @@ export function renderScrumHtml(jiraBase: string, s: Scrum): string {
 }
 
 // ───────────────────────── 체크리스트 렌더러/파서 (일일 진행 업무) ─────────────────────────
+// 무그룹 항목은 기존과 동일하게 평불릿(- ...)으로, 스페이스가 붙은 항목은 데일리 스크럼과
+// 같은 규칙(그룹 헤더 `  + **[label]**` → 항목 `    + ...` → 하위 `        + ...`)으로 그룹핑해 렌더.
+function pushListItem(
+	L: string[],
+	jiraBase: string,
+	it: ListItem,
+	bullet: string,
+	subBullet: string,
+): void {
+	const key = (it.key || "").trim();
+	const desc = (it.desc || "").trim();
+	if (!key && !desc) return;
+	L.push(
+		`${bullet}${mdHead(jiraBase, key, desc)}${fmtMeta(it.progress, it.due)}`,
+	);
+	for (const s of it.subs ?? []) if (s.trim()) L.push(subBullet + s.trim());
+}
 export function renderList(jiraBase: string, items: ListItem[]): string {
 	const L: string[] = [];
+	const spaceOrder: string[] = [];
+	const bySpace = new Map<string, ListItem[]>();
 	for (const it of items ?? []) {
-		const key = (it.key || "").trim();
-		const desc = (it.desc || "").trim();
-		if (!key && !desc) continue;
-		L.push(`- ${mdHead(jiraBase, key, desc)}${fmtMeta(it.progress, it.due)}`);
-		for (const s of it.subs ?? []) if (s.trim()) L.push("    - " + s.trim());
+		const sp = (it.space || "").trim();
+		if (!sp) {
+			pushListItem(L, jiraBase, it, "- ", "    - ");
+			continue;
+		}
+		let bucket = bySpace.get(sp);
+		if (!bucket) {
+			bucket = [];
+			bySpace.set(sp, bucket);
+			spaceOrder.push(sp);
+		}
+		bucket.push(it);
+	}
+	for (const sp of spaceOrder) {
+		L.push(`  + **[${sp}]**`);
+		for (const it of bySpace.get(sp) ?? [])
+			pushListItem(L, jiraBase, it, "    + ", "        + ");
 	}
 	return L.join("\n");
 }
@@ -295,7 +331,8 @@ export function parseList(
 ): ListItem[] {
 	const items: ListItem[] = [];
 	let cur: ListItem | null = null;
-	const mk = (content: string, done: boolean): ListItem => {
+	let curSpace = "";
+	const mk = (content: string, done: boolean, space: string): ListItem => {
 		// 항목을 리턴 → 바깥에서 cur 대입(TS 흐름분석)
 		let key = "";
 		const km = content.match(/^\[([^\]]+)\]\([^)]*\)\s*(.*)$/);
@@ -315,25 +352,42 @@ export function parseList(
 			if (dm)
 				due = `${year}-${String(+dm[1]).padStart(2, "0")}-${String(+dm[2]).padStart(2, "0")}`;
 		}
-		const item: ListItem = { done, key, desc, progress, due, subs: [] };
+		const item: ListItem = { done, key, desc, progress, due, subs: [], space };
 		items.push(item);
 		return item;
 	};
 	for (const raw of body.split("\n")) {
 		const line = raw.replace(/\s+$/, "");
 		if (!line.trim()) continue;
+		const indent = raw.match(/^ */)?.[0].length ?? 0;
 		let m: RegExpMatchArray | null;
-		if ((m = line.match(/^[-*]\s*\[([ xX])\]\s*(.*)$/))) {
-			cur = mk(m[2], m[1].toLowerCase() === "x");
+		// 스페이스 그룹 헤더: "  + **[label]**" (데일리 스크럼과 동일 규칙)
+		if ((m = line.match(/^\s*\+\s*\*\*\[(.+?)\]\*\*\s*$/))) {
+			curSpace = m[1].trim();
+			cur = null;
 			continue;
 		}
-		if ((m = line.match(/^\s*[-+*]\s+(.*)$/))) {
-			const indent = raw.match(/^ */)?.[0].length ?? 0;
-			if (indent >= 2 && cur) {
+		// 체크박스 항목 — 항상 무그룹(최상위)
+		if ((m = line.match(/^[-*]\s*\[([ xX])\]\s*(.*)$/))) {
+			cur = mk(m[2], m[1].toLowerCase() === "x", "");
+			continue;
+		}
+		// dash 불릿: 무그룹 항목(들여쓰기 0) 또는 무그룹 항목의 하위(들여쓰기 ≥2)
+		if ((m = line.match(/^\s*-\s+(.*)$/))) {
+			if (indent >= 2 && cur && !cur.space) {
 				(cur.subs ??= []).push(m[1].trim());
 				continue;
-			} // 하위 불릿
-			cur = mk(m[1], false); // 체크박스 없는 불릿 → 항목
+			}
+			cur = mk(m[1], false, "");
+			continue;
+		}
+		// plus 불릿: 스페이스 그룹 항목(들여쓰기 ≥4) 또는 그 하위(들여쓰기 ≥6)
+		if ((m = line.match(/^\s*\+\s+(.*)$/))) {
+			if (indent >= 6 && cur && cur.space) {
+				(cur.subs ??= []).push(m[1].trim());
+				continue;
+			}
+			cur = mk(m[1], false, curSpace);
 		}
 		// 비-리스트 줄글은 스킵 (일일 진행 업무는 목록 가정)
 	}
@@ -496,7 +550,9 @@ export function serializeDoc(jiraBase: string, doc: Doc): string {
 	const parts: string[] = [];
 	if (doc.preamble) parts.push(doc.preamble.trim());
 	for (const s of doc.sections) {
-		parts.push(`## ${s.title}\n\n${sectionBody(jiraBase, doc, s)}`.replace(/\s+$/, ""));
+		parts.push(
+			`## ${s.title}\n\n${sectionBody(jiraBase, doc, s)}`.replace(/\s+$/, ""),
+		);
 	}
 	return parts.join("\n\n") + "\n";
 }
@@ -506,6 +562,23 @@ export const dayResponse = (jiraBase: string, doc: Doc) => ({
 	teams: renderScrum(jiraBase, doc.scrum),
 	teamsHtml: renderScrumHtml(jiraBase, doc.scrum),
 });
+
+// 문서의 일일 진행 업무(list 섹션) 항목들 — 필드를 정규화해 반환.
+// prev-daily 가져오기 · 전일 이월 등 "어제 일일 → 전일" 흐름의 단일 원천.
+export function dailyItemsOf(doc: Doc): ListItem[] {
+	const sec = doc.sections.find((s) => s.kind === "list") as
+		| (Section & { kind: "list" })
+		| undefined;
+	return (sec?.items ?? []).map((it) => ({
+		done: !!it.done,
+		key: it.key || "",
+		desc: it.desc || "",
+		progress: it.progress ?? "",
+		due: it.due || "",
+		subs: (it.subs || []).slice(),
+		space: it.space || "",
+	}));
+}
 
 export async function carryNew(
 	store: Store,
@@ -518,10 +591,9 @@ export async function carryNew(
 	const prev = earlier.at(-1) ?? null;
 	if (prev) {
 		const p = await store.get(prev);
-		if (p?.scrum?.today) {
-			doc.scrum.prev = clone(p.scrum.today);
-			doc.scrum.today = clone(p.scrum.today);
-		}
+		// 전일 = 직전 근무일의 일일 진행 업무(실제로 한 일). 금일은 비워두고
+		// 당일에 일일 진행 업무를 채운 뒤 스크럼 생성 버튼으로 만든다.
+		if (p) doc.scrum.prev = dailyToBlock(dailyItemsOf(p));
 	}
 	return doc;
 }
@@ -531,12 +603,18 @@ function itemProgress(it: ListItem): number | "" {
 	if (typeof it.progress === "number") return it.progress;
 	return it.done ? 100 : "";
 }
-// 일일 진행 업무(체크리스트) → 전일 진행 업무 블록(라벨 없는 스페이스 1개)로 변환
+// 일일 진행 업무(체크리스트) → 전일 진행 업무 블록. 항목의 space 를 그대로 스페이스로 그룹핑(최초 등장 순서 유지).
 export function dailyToBlock(items: ListItem[]): Block {
-	const tasks: Task[] = [];
+	const order: string[] = [];
+	const bySpace = new Map<string, Task[]>();
 	for (const it of items ?? []) {
 		if (!((it.key || "").trim() || (it.desc || "").trim())) continue;
-		tasks.push({
+		const label = (it.space || "").trim();
+		if (!bySpace.has(label)) {
+			bySpace.set(label, []);
+			order.push(label);
+		}
+		bySpace.get(label)!.push({
 			key: it.key || "",
 			desc: it.desc || "",
 			progress: itemProgress(it),
@@ -545,7 +623,7 @@ export function dailyToBlock(items: ListItem[]): Block {
 		});
 	}
 	return {
-		spaces: tasks.length ? [{ label: "", tasks }] : [],
+		spaces: order.map((label) => ({ label, tasks: bySpace.get(label)! })),
 		issues: "없음",
 		collab: "없음",
 	};
@@ -581,6 +659,7 @@ export type ListItemRow = {
 	progress: number | null;
 	due: string;
 	subs_json: string;
+	space: string;
 };
 export type DocRows = {
 	day: DayRow;
@@ -654,6 +733,7 @@ function listSectionsToRows(sections: Section[]): ListItemRow[] {
 					progress: numOrNull(it.progress ?? ""),
 					due: it.due || "",
 					subs_json: subsJson(it.subs),
+					space: it.space || "",
 				}),
 			);
 	return listItems;
@@ -720,6 +800,7 @@ export function rowsToDoc(date: string, r: DocRows): Doc {
 			progress: (it.progress === null ? "" : it.progress) as number | "",
 			due: it.due || "",
 			subs: parseSubs(it.subs_json),
+			space: it.space || "",
 		}));
 	const sections: Section[] = [...r.sections]
 		.sort((a, b) => a.pos - b.pos)

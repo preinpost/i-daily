@@ -16,9 +16,15 @@ import {
 	normCfg,
 	normalizeDoc,
 	shiftDate,
+	todayDailyItems,
 	ymd,
 } from "./lib/model";
-import { serializeDoc } from "../../shared/model";
+import {
+	dailyToBlock,
+	renderScrum,
+	renderScrumHtml,
+	serializeDoc,
+} from "../../shared/model";
 import type { Config, Doc, Meta } from "./types";
 
 export function App() {
@@ -172,7 +178,7 @@ export function App() {
 			return;
 		if (
 			!confirm(
-				"직전 근무일 '금일'을 '전일'로 이월하고 초안을 채웁니다.\n현재 " +
+				"직전 근무일 '일일 진행 업무'를 '전일 진행 업무'로 이월하고 초안을 채웁니다.\n현재 " +
 					curDateRef.current +
 					" 입력을 덮어쓸까요? (이월은 즉시 서버에 저장됩니다)",
 			)
@@ -191,6 +197,30 @@ export function App() {
 			toast("이월 완료 — 진척률·마감일 확인하세요");
 			bump();
 		} else toast("이월 실패");
+	}
+
+	// 데일리 스크럼 생성 — 금일 블록을 오늘 일일 진행 업무로 확정하고(이슈·협업 유지)
+	// Teams 붙여넣기 텍스트를 클라이언트에서 즉시 렌더. 저장하면 서버도 같은 텍스트를 반환.
+	function generateScrum() {
+		const doc = docRef.current;
+		if (!doc) return;
+		const items = todayDailyItems(doc).filter(
+			(it) => (it.key || "").trim() || (it.desc || "").trim(),
+		);
+		if (!items.length) return toast("일일 진행 업무에 먼저 항목을 추가하세요");
+		const block = dailyToBlock(items);
+		block.issues = (doc.scrum.today.issues || "").trim() || "없음";
+		block.collab = (doc.scrum.today.collab || "").trim() || "없음";
+		doc.scrum.today = block;
+		applyTeams(
+			renderScrum(config.jiraBase, doc.scrum),
+			renderScrumHtml(config.jiraBase, doc.scrum),
+		);
+		commit();
+		toast("데일리 스크럼 생성됨 — 아래 Teams 텍스트 확인");
+		document
+			.getElementById("teams-output")
+			?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 	}
 
 	async function copyMd() {
@@ -338,6 +368,7 @@ export function App() {
 					onShift={(days) => loadDate(shiftDate(curDate, days))}
 					onPickDate={(date) => loadDate(date)}
 					onCarry={carry}
+					onGenerateScrum={generateScrum}
 					teams={teams}
 					onCopy={copy}
 					onCopyMd={copyMd}

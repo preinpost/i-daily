@@ -85,7 +85,7 @@ export const tasks = sqliteTable(
 	],
 );
 
-// list_items — 일일 진행
+// list_items — 일일 진행 (space: 소속 스페이스 라벨, 데일리 스크럼의 spaces.label과 동일 개념)
 export const listItems = sqliteTable(
 	"list_items",
 	{
@@ -98,6 +98,7 @@ export const listItems = sqliteTable(
 		progress: integer("progress"),
 		due: text("due").notNull().default(""),
 		subsJson: text("subs_json").notNull().default("[]"),
+		space: text("space").notNull().default(""),
 	},
 	(t) => [
 		primaryKey({ columns: [t.user, t.date, t.pos] }),
@@ -172,7 +173,7 @@ export const taskRows = sqliteView("task_rows", {
     JOIN spaces sp ON sp.user = t.user AND sp.date = t.date AND sp.side = t.side AND sp.pos = t.space_pos
    WHERE t.jkey <> '' OR t.descr <> ''
   UNION ALL
-  SELECT user, date, 'daily' AS side, '' AS space, jkey, descr, progress, due, subs_json
+  SELECT user, date, 'daily' AS side, space AS space, jkey, descr, progress, due, subs_json
     FROM list_items
    WHERE jkey <> '' OR descr <> ''
 `);

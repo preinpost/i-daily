@@ -118,6 +118,7 @@ async function readDoc(
 				progress: listItems.progress,
 				due: listItems.due,
 				subsJson: listItems.subsJson,
+				space: listItems.space,
 			})
 			.from(listItems)
 			.where(and(eq(listItems.user, user), eq(listItems.date, date)))
@@ -161,6 +162,7 @@ async function readDoc(
 			progress: it.progress,
 			due: it.due,
 			subs_json: it.subsJson,
+			space: it.space,
 		})),
 	};
 	return rowsToDoc(date, rows);
@@ -271,6 +273,7 @@ async function writeDoc(
 					progress: it.progress,
 					due: it.due,
 					subsJson: it.subs_json,
+					space: it.space,
 				})),
 			),
 		);
