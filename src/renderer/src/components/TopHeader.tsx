@@ -30,6 +30,7 @@ export function TopHeader({
       <div className="mx-auto flex max-w-[1080px] flex-wrap items-center gap-3 px-[18px] py-2">
         <div className="flex cursor-default select-none items-center gap-2 text-[15px] font-bold tracking-[-0.2px]">
           <span className="brand-dot" /> i-daily
+          <span className="text-[11px] font-medium tabular-nums text-ink-2">v{__APP_VERSION__}</span>
         </div>
 
         <div className="ml-auto text-right leading-tight">

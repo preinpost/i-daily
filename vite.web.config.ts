@@ -4,9 +4,15 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
+
+const pkg = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf8"));
 
 export default defineConfig({
 	plugins: [react(), tailwindcss()],
+	define: {
+		__APP_VERSION__: JSON.stringify(pkg.version),
+	},
 	// root 를 renderer 로 → http://localhost:5173/ 에서 index.html 서빙.
 	// styles.css 의 @source "./src" 로 컴포넌트를 스캔.
 	root: resolve(__dirname, "src/renderer"),
