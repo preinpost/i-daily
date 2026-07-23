@@ -136,7 +136,7 @@ export function ConfigPane({
 		try {
 			await window.api.ai.clearKey();
 			setAiKey("");
-			toast("AI 키 삭제됨 — 결정적 집계만 사용");
+			toast("AI 키 삭제됨 — 집계만 사용");
 			await refreshAi();
 		} catch {
 			toast("삭제 실패");

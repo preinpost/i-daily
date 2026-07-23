@@ -160,10 +160,63 @@ test("renderDigestText: Teams 붙여넣기용 스페이스 그룹 + 메타", () 
 	const d = buildWeeklyDigest(rows(), "서재홍", "2026-07-10", "2026-07-16");
 	const txt = renderDigestText(d);
 	expect(txt).not.toContain("[주간업무보고]"); // 상단 헤더 제거
+	expect(txt).toContain("금주 업무 내용"); // 섹션 헤더
 	expect(txt).toContain("[cloudit]");
 	expect(txt).toContain("ㅇ[CLOUD-432] 이슈 분석 (100%, ~7/23)"); // ㅇ 글머리 + fmtMeta M/D
 	expect(txt).toContain("  - 패치 적용"); // notes 파편 → 하위 불릿
 	expect(txt).not.toContain("전일 재기술");
+});
+
+test("renderDigestText: 전부 100%면 차주 섹션 생략", () => {
+	const d = buildWeeklyDigest(rows(), "", "2026-07-10", "2026-07-16"); // CLOUD-432·OPIT-1730 모두 100
+	const txt = renderDigestText(d);
+	expect(txt).toContain("금주 업무 내용");
+	expect(txt).not.toContain("차주 업무 내용");
+});
+
+test("renderDigestText: 차주 섹션은 100% 아닌 항목만(진척 null 포함)", () => {
+	const rs: TaskRow[] = [
+		{
+			date: "2026-07-14",
+			side: "today",
+			space: "cloudit",
+			key: "CLOUD-1",
+			desc: "완료 작업",
+			progress: 100,
+			due: "",
+		},
+		{
+			date: "2026-07-14",
+			side: "today",
+			space: "cloudit",
+			key: "CLOUD-2",
+			desc: "진행 중 작업",
+			progress: 60,
+			due: "2026-07-30",
+		},
+		{
+			date: "2026-07-15",
+			side: "today",
+			space: "온보딩",
+			key: "OPIT-9",
+			desc: "진척 미기록",
+			progress: null,
+			due: "",
+		},
+	];
+	const d = buildWeeklyDigest(rs, "", "2026-07-10", "2026-07-16");
+	const txt = renderDigestText(d);
+	// 금주 섹션엔 전체 항목
+	expect(txt).toContain("금주 업무 내용");
+	expect(txt).toContain("ㅇ[CLOUD-1] 완료 작업 (100%)");
+	expect(txt).toContain("ㅇ[CLOUD-2] 진행 중 작업 (60%, ~7/30)");
+	expect(txt).toContain("ㅇ[OPIT-9] 진척 미기록");
+	// 차주 섹션: 100% 아닌 것만 이월(60%·null), 100% 완료는 제외
+	expect(txt).toContain("차주 업무 내용");
+	const next = txt.split("차주 업무 내용")[1];
+	expect(next).toContain("CLOUD-2");
+	expect(next).toContain("OPIT-9"); // 진척 null 도 이월
+	expect(next).not.toContain("CLOUD-1"); // 100% 완료 제외
 });
 
 test("digest.raw: 요일별 원본을 병합 없이 보존", () => {

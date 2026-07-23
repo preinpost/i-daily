@@ -236,14 +236,14 @@ export async function generateReport(
 	if (opts.useAgent && digest.count > 0) {
 		const provider = (cfg.reportProvider || "").trim();
 		if (!provider) {
-			warn = "AI provider 미설정 — 설정에서 등록하면 서술을 다듬어요. (결정적 집계 반환)";
+			warn = "AI provider 미설정 — 설정에서 등록하면 서술을 다듬어요.";
 		} else if (!env?.AI_ENC_KEY || !db) {
-			warn = "서버에 AI_ENC_KEY secret 이 없어 AI 를 사용할 수 없습니다. (결정적 집계 반환)";
+			warn = "서버에 AI_ENC_KEY secret 이 없어 AI 를 사용할 수 없습니다.";
 		} else {
 			try {
 				const enc = await readAiAuthEnc(db, backend.user);
 				if (!enc) {
-					warn = "등록된 API 키가 없어 결정적 집계만 반환합니다.";
+					warn = "등록된 API 키가 없어 집계 결과만 반환합니다.";
 				} else {
 					const apiKey = await decryptSecret(env.AI_ENC_KEY, enc);
 					const system =
@@ -265,7 +265,7 @@ export async function generateReport(
 			} catch (e) {
 				text = deterministic;
 				warn =
-					"AI 호출 실패 — 결정적 집계로 대체: " +
+					"AI 호출 실패 — 집계 결과로 대체: " +
 					String((e as Error)?.message || e).slice(0, 160);
 			}
 		}

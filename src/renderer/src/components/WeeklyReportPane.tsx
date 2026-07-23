@@ -240,7 +240,7 @@ export function WeeklyReportPane({
             <div className="flex items-center gap-3 text-[13px] text-ink-2">
               <span>
                 {res.from} ~ {res.to} · {res.count}건
-                {res.usedAgent ? " · 🤖 " + res.usedAgent : " · 결정적 집계"}
+                {res.usedAgent ? " · 🤖 " + res.usedAgent : ""}
               </span>
               {canDiff && (
                 <button

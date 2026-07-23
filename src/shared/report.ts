@@ -162,13 +162,9 @@ function buildRaw(rows: TaskRow[]): RawDay[] {
 
 // ───────────────────────── 결정적 렌더(에이전트 없이도 붙여넣기 가능한 fallback) ─────────────────────────
 // 하우스 스타일: 스페이스 헤더 `[..]`, 최상위 `ㅇ[키] 서술 (진척%, ~M/D)`, 요일 파편은 `  - ` 하위 불릿.
-export function renderDigestText(d: WeeklyDigest): string {
-	const L: string[] = [];
-	if (!d.spaces.length) {
-		L.push("(해당 기간 항목 없음)");
-		return L.join("\n");
-	}
-	d.spaces.forEach((sp, i) => {
+// 스페이스 블록을 등장 순서대로 렌더. 스페이스 블록 사이에만 빈 줄 1개.
+function renderSpaces(L: string[], spaces: DigestSpace[]): void {
+	spaces.forEach((sp, i) => {
 		if (i > 0) L.push(""); // 스페이스 블록 사이에만 빈 줄
 		L.push(`[${sp.label}]`);
 		for (const t of sp.tasks) {
@@ -183,6 +179,30 @@ export function renderDigestText(d: WeeklyDigest): string {
 			for (const s of subs) L.push(`  - ${s}`);
 		}
 	});
+}
+
+// 금주 업무 내용 = 해당 기간 전체 항목, 차주 업무 내용 = 100%가 아닌 미완료 항목만 이월.
+export function renderDigestText(d: WeeklyDigest): string {
+	const L: string[] = [];
+	if (!d.spaces.length) {
+		L.push("(해당 기간 항목 없음)");
+		return L.join("\n");
+	}
+	L.push("금주 업무 내용");
+	renderSpaces(L, d.spaces);
+
+	// 이월 대상 = 진척이 100이 아닌 항목(진척 미기록(null) 포함).
+	const carry: DigestSpace[] = d.spaces
+		.map((sp) => ({
+			label: sp.label,
+			tasks: sp.tasks.filter((t) => t.progress !== 100),
+		}))
+		.filter((sp) => sp.tasks.length > 0);
+	if (carry.length) {
+		L.push("");
+		L.push("차주 업무 내용");
+		renderSpaces(L, carry);
+	}
 	return L.join("\n");
 }
 
@@ -197,9 +217,11 @@ export const DEFAULT_REPORT_PROMPT = [
 	"- 티켓키(예: OPIT-1730, CLOUD-432), 진척%, 마감일(~날짜) 는 데이터에 있는 값을 한 글자도 바꾸지 마라.",
 	"- 없는 티켓·수치·날짜를 새로 만들지 마라. 데이터에 없으면 쓰지 마라.",
 	"- 스페이스([...]) 구조와 소속을 유지해라.",
+	"- '금주 업무 내용' / '차주 업무 내용' 두 섹션과 헤더를 그대로 유지하고, 항목을 섹션 간에 옮기지 마라.",
 	"",
 	"## 입력 데이터",
 	"- [집계 데이터] = 확정 병합본. 티켓키·진척%·마감·subs 최종값은 반드시 이 값을 그대로 사용.",
+	"- 입력은 '금주 업무 내용'(해당 기간 전체 항목)과 '차주 업무 내용'(100%가 아닌 미완료 이월 항목) 두 섹션으로 주어진다.",
 	"- [원본 로그] = 요일별 원본(병합 전). 서술 병합·검토 참고용이며 수치는 [집계 데이터] 우선.",
 	"",
 	"## 다듬기 지침",
@@ -209,18 +231,27 @@ export const DEFAULT_REPORT_PROMPT = [
 	"- 출력은 붙여넣기용 순수 텍스트만. 코드블록/설명/머리말 붙이지 마라.",
 	"",
 	"## 출력 스타일 (이 형식을 정확히 따를 것)",
+	"- 섹션 헤더 `금주 업무 내용`, `차주 업무 내용` 을 각각 단독 줄에 순서대로 유지",
 	"- 스페이스 헤더는 대괄호: `[스페이스명]`",
 	"- 최상위 업무는 글머리 `ㅇ` 로 시작: `ㅇ[티켓키] 서술 (진척%, ~M/D)`",
 	"- 하위 항목: `  - 서술 (진척%)`  /  더 깊게: `    > 서술`",
 	"- 진척/마감: 둘 다 `(100%, ~7/23)`, 진척만 `(50%)`, 없으면 생략",
-	"- 항목 사이엔 빈 줄 없이 붙이고, 스페이스 블록 사이에만 빈 줄 1개",
+	"- 항목 사이엔 빈 줄 없이 붙이고, 스페이스 블록 사이와 섹션 사이에만 빈 줄 1개",
 	"",
 	"## 예시 (형식만 참고, 내용은 데이터로)",
+	"금주 업무 내용",
 	"[Openstackit 3.4]",
 	"ㅇ[OPIT-1482] Instance HA GPU 복구 로직 추가 (70%, ~7/31)",
 	"  - GPU 인스턴스 탐지 로직 구현 (100%, ~7/24)",
 	"  - GPU 인스턴스 HA 테스트 (60%, ~7/31)",
 	"    > 입력방법 변경에 따른 화면 수정 (100%)",
 	"",
-	"## 출력은 첫 줄부터 스페이스 헤더([...])로 시작. 상단 제목/기간 헤더는 붙이지 마라.",
+	"차주 업무 내용",
+	"[Openstackit 3.4]",
+	"ㅇ[OPIT-1482] Instance HA GPU 복구 로직 추가 (70%, ~7/31)",
+	"  - GPU 인스턴스 탐지 로직 구현 (100%, ~7/24)",
+	"  - GPU 인스턴스 HA 테스트 (60%, ~7/31)",
+	"    > 입력방법 변경에 따른 화면 수정 (100%)",
+	"",
+	"## 출력은 첫 줄부터 '금주 업무 내용'으로 시작. 미완료 항목이 없으면 '차주 업무 내용' 섹션은 생략해라.",
 ].join("\n");
