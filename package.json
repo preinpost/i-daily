@@ -1,6 +1,6 @@
 {
   "name": "i-daily",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "description": "데일리 업무일지 웹앱 (Cloudflare Workers · D1)",
   "author": {
     "name": "minsoo.lee",
