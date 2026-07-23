@@ -154,6 +154,10 @@ export function WeeklyReportPane({
         <p className="tint-accent m-0 rounded-[10px] px-3.5 py-2.5 text-[13px] text-ink">
           전주 금요일 ~ 금주 목요일 사이의 진행 업무를 스페이스별로 뭉쳐 Teams 붙여넣기용으로 만듭니다.
           숫자·티켓키는 집계가 확정하고, 에이전트는 서술만 다듬어요.
+          <br />
+          <span className="text-ink-2">
+            차주 업무 내용은 집계 일자 기준 진척이 100%가 아닌(미완료) 업무들만 자동으로 이월해 정리합니다.
+          </span>
         </p>
 
         <div className="flex flex-wrap items-end gap-3">
