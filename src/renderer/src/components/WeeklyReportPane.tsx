@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useToast } from "./Toast";
 import { api } from "../lib/api";
 import type { Config } from "../types";
+import { THIS_WEEK_HEADER, NEXT_WEEK_HEADER } from "../../../shared/report";
 
 type Result = {
   ok: boolean;
@@ -9,6 +10,8 @@ type Result = {
   to: string;
   count: number;
   text: string;
+  thisWeek: string;
+  nextWeek: string;
   deterministic?: string;
   usedAgent?: string | null;
   warn?: string;
@@ -65,7 +68,8 @@ export function WeeklyReportPane({
   const [busy, setBusy] = useState<null | "digest" | "agent">(null);
   const [res, setRes] = useState<Result>(null);
   const [seeded, setSeeded] = useState(false);
-  const taRef = useRef<HTMLTextAreaElement>(null);
+  const thisWeekRef = useRef<HTMLTextAreaElement>(null);
+  const nextWeekRef = useRef<HTMLTextAreaElement>(null);
   const hasAgent = !!(config.reportProvider || "").trim();
   const [showDiff, setShowDiff] = useState(false);
   // 에이전트가 실제로 집계 원문을 바꿨을 때만 diff 제공.
@@ -86,13 +90,14 @@ export function WeeklyReportPane({
     }
   }, [active, seeded]);
 
-  // 내용 길이에 맞춰 textarea 높이 자동 조절(내부 스크롤로 잘리지 않게 → 페인이 스크롤).
+  // 내용 길이에 맞춰 각 textarea 높이 자동 조절(내부 스크롤로 잘리지 않게 → 페인이 스크롤).
   useLayoutEffect(() => {
-    const el = taRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = el.scrollHeight + "px";
-  }, [res?.text, active, showDiff]);
+    for (const el of [thisWeekRef.current, nextWeekRef.current]) {
+      if (!el) continue;
+      el.style.height = "auto";
+      el.style.height = el.scrollHeight + "px";
+    }
+  }, [res?.thisWeek, res?.nextWeek, active, showDiff]);
 
   async function gen(useAgent: boolean) {
     if (!window.api?.agent || busy) return;
@@ -131,11 +136,12 @@ export function WeeklyReportPane({
     }
   }
 
-  async function copy() {
-    if (!res?.text) return;
+  async function copy(header: string, body: string) {
+    const text = body.trim() ? `${header}\n${body.trim()}` : "";
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(res.text);
-      toast("복사됨 — Teams 채팅에 붙여넣기");
+      await navigator.clipboard.writeText(text);
+      toast(`${header} 복사됨 — Teams 채팅에 붙여넣기`);
     } catch {
       toast("복사 실패");
     }
@@ -236,7 +242,7 @@ export function WeeklyReportPane({
         )}
 
         {res && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3 text-[13px] text-ink-2">
               <span>
                 {res.from} ~ {res.to} · {res.count}건
@@ -252,14 +258,6 @@ export function WeeklyReportPane({
                   {showDiff ? "📝 편집" : "🔍 diff"}
                 </button>
               )}
-              <button
-                type="button"
-                className={"btn btn-ghost" + (canDiff ? "" : " ml-auto")}
-                onClick={copy}
-                disabled={!res.text}
-              >
-                📋 복사
-              </button>
             </div>
             {canDiff && showDiff ? (
               <pre className={fieldCls + " m-0 overflow-x-auto whitespace-pre-wrap font-mono text-[12px] leading-relaxed"}>
@@ -279,13 +277,50 @@ export function WeeklyReportPane({
                 ))}
               </pre>
             ) : (
-              <textarea
-                ref={taRef}
-                className={fieldCls + " resize-none overflow-hidden font-mono leading-relaxed"}
-                value={res.text}
-                onChange={(e) => setRes({ ...res, text: e.target.value })}
-                spellCheck={false}
-              />
+              <>
+                <section className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <h3 className="m-0 text-[13px] font-bold text-ink">{THIS_WEEK_HEADER}</h3>
+                    <button
+                      type="button"
+                      className="btn btn-ghost ml-auto"
+                      onClick={() => copy(THIS_WEEK_HEADER, res.thisWeek)}
+                      disabled={!res.thisWeek.trim()}
+                    >
+                      📋 복사
+                    </button>
+                  </div>
+                  <textarea
+                    ref={thisWeekRef}
+                    className={fieldCls + " resize-none overflow-hidden font-mono leading-relaxed placeholder:text-ink-2"}
+                    value={res.thisWeek}
+                    onChange={(e) => setRes({ ...res, thisWeek: e.target.value })}
+                    placeholder="(해당 기간 항목 없음)"
+                    spellCheck={false}
+                  />
+                </section>
+                <section className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <h3 className="m-0 text-[13px] font-bold text-ink">{NEXT_WEEK_HEADER}</h3>
+                    <button
+                      type="button"
+                      className="btn btn-ghost ml-auto"
+                      onClick={() => copy(NEXT_WEEK_HEADER, res.nextWeek)}
+                      disabled={!res.nextWeek.trim()}
+                    >
+                      📋 복사
+                    </button>
+                  </div>
+                  <textarea
+                    ref={nextWeekRef}
+                    className={fieldCls + " resize-none overflow-hidden font-mono leading-relaxed placeholder:text-ink-2"}
+                    value={res.nextWeek}
+                    onChange={(e) => setRes({ ...res, nextWeek: e.target.value })}
+                    placeholder="(해당 기간 항목 없음)"
+                    spellCheck={false}
+                  />
+                </section>
+              </>
             )}
             {res.warn && <small className="text-xs text-amber-600">{res.warn}</small>}
           </div>

@@ -3,6 +3,7 @@ import {
 	weekWindow,
 	buildWeeklyDigest,
 	renderDigestText,
+	splitDigestText,
 } from "../src/shared/report.ts";
 import type { TaskRow } from "../src/shared/model.ts";
 
@@ -217,6 +218,49 @@ test("renderDigestText: 차주 섹션은 100% 아닌 항목만(진척 null 포�
 	expect(next).toContain("CLOUD-2");
 	expect(next).toContain("OPIT-9"); // 진척 null 도 이월
 	expect(next).not.toContain("CLOUD-1"); // 100% 완료 제외
+});
+
+test("splitDigestText: 금주/차주 본문 분할(섹션 헤더 줄 제외)", () => {
+	const rs: TaskRow[] = [
+		{
+			date: "2026-07-14",
+			side: "today",
+			space: "cloudit",
+			key: "CLOUD-1",
+			desc: "완료",
+			progress: 100,
+			due: "",
+		},
+		{
+			date: "2026-07-14",
+			side: "today",
+			space: "cloudit",
+			key: "CLOUD-2",
+			desc: "진행",
+			progress: 60,
+			due: "",
+		},
+	];
+	const txt = renderDigestText(
+		buildWeeklyDigest(rs, "", "2026-07-10", "2026-07-16"),
+	);
+	const { thisWeek, nextWeek } = splitDigestText(txt);
+	// 본문만 남고 섹션 헤더 줄은 제거
+	expect(thisWeek).not.toContain("금주 업무 내용");
+	expect(thisWeek).toContain("CLOUD-1");
+	expect(thisWeek).toContain("CLOUD-2");
+	expect(nextWeek).not.toContain("차주 업무 내용");
+	expect(nextWeek).toContain("CLOUD-2");
+	expect(nextWeek).not.toContain("CLOUD-1"); // 100% 완료 제외
+});
+
+test("splitDigestText: 차주 섹션 없으면 nextWeek 빈 문자열", () => {
+	const txt = renderDigestText(
+		buildWeeklyDigest(rows(), "", "2026-07-10", "2026-07-16"),
+	); // 모두 100%
+	const { thisWeek, nextWeek } = splitDigestText(txt);
+	expect(thisWeek).toContain("CLOUD-432");
+	expect(nextWeek).toBe("");
 });
 
 test("digest.raw: 요일별 원본을 병합 없이 보존", () => {

@@ -11,6 +11,7 @@ import type { Backend } from "../shared/backend.ts";
 import {
 	buildWeeklyDigest,
 	renderDigestText,
+	splitDigestText,
 	weekWindow,
 	DEFAULT_REPORT_PROMPT,
 } from "../shared/report.ts";
@@ -65,6 +66,8 @@ type GenerateResult = {
 	to: string;
 	count: number;
 	text: string;
+	thisWeek: string;
+	nextWeek: string;
 	deterministic: string;
 	usedAgent: string | null;
 	warn?: string;
@@ -271,12 +274,15 @@ export async function generateReport(
 		}
 	}
 
+	const { thisWeek, nextWeek } = splitDigestText(text);
 	return {
 		ok: true,
 		from,
 		to,
 		count: digest.count,
 		text,
+		thisWeek,
+		nextWeek,
 		deterministic,
 		usedAgent,
 		warn,

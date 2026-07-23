@@ -181,6 +181,10 @@ function renderSpaces(L: string[], spaces: DigestSpace[]): void {
 	});
 }
 
+// 섹션 헤더 상수 — 렌더·분할·UI 복사 공통 단일 원천.
+export const THIS_WEEK_HEADER = "금주 업무 내용";
+export const NEXT_WEEK_HEADER = "차주 업무 내용";
+
 // 금주 업무 내용 = 해당 기간 전체 항목, 차주 업무 내용 = 100%가 아닌 미완료 항목만 이월.
 export function renderDigestText(d: WeeklyDigest): string {
 	const L: string[] = [];
@@ -188,7 +192,7 @@ export function renderDigestText(d: WeeklyDigest): string {
 		L.push("(해당 기간 항목 없음)");
 		return L.join("\n");
 	}
-	L.push("금주 업무 내용");
+	L.push(THIS_WEEK_HEADER);
 	renderSpaces(L, d.spaces);
 
 	// 이월 대상 = 진척이 100이 아닌 항목(진척 미기록(null) 포함).
@@ -200,10 +204,30 @@ export function renderDigestText(d: WeeklyDigest): string {
 		.filter((sp) => sp.tasks.length > 0);
 	if (carry.length) {
 		L.push("");
-		L.push("차주 업무 내용");
+		L.push(NEXT_WEEK_HEADER);
 		renderSpaces(L, carry);
 	}
 	return L.join("\n");
+}
+
+// 합쳐진 보고 텍스트를 금주/차주 본문(섹션 헤더 줄 제외)으로 분할.
+// '차주 업무 내용' 줄 기준. 없으면 전체가 금주, nextWeek 은 빈 문자열.
+export function splitDigestText(text: string): {
+	thisWeek: string;
+	nextWeek: string;
+} {
+	const lines = text.split("\n");
+	const strip = (block: string[], header: string) => {
+		const h = block.findIndex((l) => l.trim() === header);
+		return block.slice(h === -1 ? 0 : h + 1).join("\n").trim();
+	};
+	const idx = lines.findIndex((l) => l.trim() === NEXT_WEEK_HEADER);
+	if (idx === -1)
+		return { thisWeek: strip(lines, THIS_WEEK_HEADER), nextWeek: "" };
+	return {
+		thisWeek: strip(lines.slice(0, idx), THIS_WEEK_HEADER),
+		nextWeek: strip(lines.slice(idx), NEXT_WEEK_HEADER),
+	};
 }
 
 // ───────────────────────── 에이전트 스킬 프롬프트(내장) ─────────────────────────
