@@ -8,6 +8,7 @@ import {
 	groupListItems,
 	itemId,
 	listHasContent,
+	moveListSpace,
 	renameListSpace,
 } from "../../lib/model";
 import { autoGrow, confirmReset } from "../../lib/ui";
@@ -183,13 +184,15 @@ export function ListSection({
 				+ 항목
 			</button>
 
-			{named.map((g) => (
+			{named.map((g, gi) => (
 				<ListSpaceGroup
 					key={g.label}
 					sec={sec}
 					group={g}
 					allLabels={allLabels}
 					prevMap={prevMap}
+					canUp={gi > 0}
+					canDown={gi < named.length - 1}
 				/>
 			))}
 
@@ -229,11 +232,15 @@ function ListSpaceGroup({
 	group,
 	allLabels,
 	prevMap,
+	canUp,
+	canDown,
 }: {
 	sec: ListSec;
 	group: import("../../lib/model").ListGroup;
 	allLabels: string[];
 	prevMap: Record<string, PrevEntry>;
+	canUp: boolean;
+	canDown: boolean;
 }) {
 	const { commit } = useEditor();
 	const toast = useToast();
@@ -261,6 +268,28 @@ function ListSpaceGroup({
 						commit();
 					}}
 				/>
+				<button
+					type="button"
+					className="btn btn-icon btn-tiny"
+					disabled={!canUp}
+					title="스페이스 순서 위로"
+					onClick={() => {
+						if (moveListSpace(sec.items, group.label, -1)) commit();
+					}}
+				>
+					↑
+				</button>
+				<button
+					type="button"
+					className="btn btn-icon btn-tiny"
+					disabled={!canDown}
+					title="스페이스 순서 아래로"
+					onClick={() => {
+						if (moveListSpace(sec.items, group.label, 1)) commit();
+					}}
+				>
+					↓
+				</button>
 				<button
 					type="button"
 					className="btn btn-tiny btn-ghost"

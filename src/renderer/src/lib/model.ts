@@ -255,6 +255,29 @@ export function renameListSpace(
 	const to = (newLabel || "").trim();
 	for (const it of items) if ((it.space || "").trim() === from) it.space = to;
 }
+// 스페이스(그룹) 순서 이동 — 명명된 스페이스 블록을 통째로 위/아래로 옮긴다.
+// 무그룹("")은 항상 맨 위로 고정되므로 순서 변경 대상에서 제외한다.
+export function moveListSpace(
+	items: ListItem[],
+	label: string,
+	dir: -1 | 1,
+): boolean {
+	const groups = groupListItems(items);
+	const named = groups.slice(1); // 무그룹 제외
+	const from = named.findIndex((g) => g.label === (label || "").trim());
+	if (from < 0) return false;
+	const to = from + dir;
+	if (to < 0 || to >= named.length) return false;
+	const [moved] = named.splice(from, 1);
+	named.splice(to, 0, moved);
+	// 재조립: 무그룹 항목 먼저, 이후 새 순서의 명명 그룹(각 그룹 내부 순서는 유지)
+	const rebuilt: ListItem[] = [
+		...groups[0].items.map((x) => x.it),
+		...named.flatMap((g) => g.items.map((x) => x.it)),
+	];
+	items.splice(0, items.length, ...rebuilt);
+	return true;
+}
 // 단일 항목 스페이스 이동 — 드래그로 다른 스페이스(또는 무그룹)에 떨어뜨릴 때 사용.
 // 원본 배열 순서는 그대로 둬 groupListItems 가 space 로 묶을 때 번호/순서가 자연스럽게 유지되게 한다.
 export function moveItemToSpace(
