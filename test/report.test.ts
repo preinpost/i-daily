@@ -79,6 +79,27 @@ test("digest: prev 제외 · 키 dedupe · 진척 최댓값 · 마감 가장 마
 	expect(t.notes).toEqual(["이슈 분석", "패치 적용"]);
 });
 
+test("digest: 마감은 가장 나중에 기록된 값 · 같은 날짜면 실제 수행(daily)이 계획(today)을 이김", () => {
+	// 같은 날 계획(today)엔 옛 마감 7/23, 실제 수행(daily)엔 늘춘 마감 7/28 → daily(7/28)가 이겨야 함.
+	const delayed: TaskRow[] = [
+		{ date: "2026-07-23", side: "today", space: "c", key: "CLOUD-1", desc: "작업", progress: 50, due: "2026-07-23" },
+		{ date: "2026-07-23", side: "daily", space: "c", key: "CLOUD-1", desc: "작업", progress: 60, due: "2026-07-28" },
+	];
+	expect(buildWeeklyDigest(delayed).spaces[0].tasks[0].due).toBe("2026-07-28");
+	// 앞당긴 경우도 실제 수행(daily)이 기준: today 7/28(옛), daily 7/23 → 7/23.
+	const earlier: TaskRow[] = [
+		{ date: "2026-07-23", side: "daily", space: "c", key: "CLOUD-2", desc: "작업", progress: 60, due: "2026-07-23" },
+		{ date: "2026-07-23", side: "today", space: "c", key: "CLOUD-2", desc: "작업", progress: 50, due: "2026-07-28" },
+	];
+	expect(buildWeeklyDigest(earlier).spaces[0].tasks[0].due).toBe("2026-07-23");
+	// 입력 순서가 뒤섞여도 가장 늘은 날짜(cross-day)가 이김.
+	const crossDay: TaskRow[] = [
+		{ date: "2026-07-24", side: "daily", space: "c", key: "CLOUD-3", desc: "작업", progress: 90, due: "2026-07-28" },
+		{ date: "2026-07-20", side: "daily", space: "c", key: "CLOUD-3", desc: "작업", progress: 30, due: "2026-07-23" },
+	];
+	expect(buildWeeklyDigest(crossDay).spaces[0].tasks[0].due).toBe("2026-07-28");
+});
+
 test("digest: 일일(space 없음) + 스크럼(space) 같은 티켓 → 전역 병합(중복/기타 버킷 없음)", () => {
 	const rs: TaskRow[] = [
 		{

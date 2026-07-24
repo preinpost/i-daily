@@ -54,13 +54,20 @@ export type WeeklyDigest = {
 
 // side ∈ prev|today|daily. 'prev'(전일 재기술)는 중복이라 제외 — 실제 수행분(today/daily)만.
 const isWorkSide = (s: string) => s === "today" || s === "daily";
+// 같은 날짜 안에서의 우선순위(기록 최신성). task_rows 뷰에는 타임스탬프가 없으므로,
+// 실제 수행 기록인 일일 목록('daily')이 아침 계획인 스크럼('today')보다 나중 기록으로 본다.
+// 같은 티켓의 마감을 계획 쪽 오래된 값이 덮어쓰지 않도록 함(#은 숫자/영문보다 작아 날짜 경계 역할).
+const sideRank = (s: string): number => (s === "daily" ? 2 : s === "today" ? 1 : 0);
+// 마감이 기록된 시점의 비교 키(문자열 비교용). 날짜가 먼저, 같으면 side 순위.
+const dueRank = (date: string, side: string): string => `${date || ""}#${sideRank(side)}`;
 const NO_SPACE = "기타";
 
 // 티켓키(또는 서술)로 전역 dedupe — 같은 티켓이 일일/스크럼 양쪽에 있어도 1건으로 병합.
 // 스페이스는 row.space 그대로 쓰고, 비어있으면 "기타".
-// 진척=최댓값, 마감=가장 마지막에 기록된 값(최신 날짜의 기록), 날짜/노트=합집합.
-// 주의: rows 는 queryTasks 에서 date 오름차순으로 오므로, 뒤에 오는 행일수록 더 나중에 기록된 업무다.
-type ResolvedTask = DigestTask & { space: string };
+// 진척=최댓값, 마감=가장 나중에 기록된 값(가장 늘은 날짜 · 같은 날짜면 실제 수행로), 날짜/노트=합집합.
+// 마감은 입력 행 순서에 의존하지 않고 dueRank(날짜+side)로 비교해
+// 가장 나중에 기록된 것이 이기게 한다(rows 정렬 여부와 무관하게 결정적).
+type ResolvedTask = DigestTask & { space: string; dueRankKey: string };
 export function buildWeeklyDigest(
 	rows: TaskRow[],
 	owner = "",
@@ -85,6 +92,7 @@ export function buildWeeklyDigest(
 				desc,
 				progress: typeof r.progress === "number" ? r.progress : null,
 				due: r.due || "",
+				dueRankKey: r.due ? dueRank(r.date || "", r.side) : "",
 				dates: r.date ? [r.date] : [],
 				notes: desc ? [desc] : [],
 				subs: (r.subs || []).slice(),
@@ -98,8 +106,15 @@ export function buildWeeklyDigest(
 						? r.progress
 						: Math.max(cur.progress, r.progress);
 			// 마감(완료 예정일)은 계속 바뀔 수 있으므로 값 크기 비교가 아니라
-			// '가장 마지막에 기록된 업무'의 마감을 그대로 반영한다(앞당겨진 날짜도 반영).
-			if (r.due) cur.due = r.due;
+			// '가장 나중에 기록된 마감'(dueRank 최대)을 반영한다(늦춘/앞당긴 날짜 모두 반영).
+			// 빈 마감은 무시해 마지막으로 기록된 마감을 유지. 같은 날짜는 실제 수행(daily)이 계획(today)을 이김.
+			if (r.due) {
+				const rank = dueRank(r.date || "", r.side);
+				if (rank >= cur.dueRankKey) {
+					cur.due = r.due;
+					cur.dueRankKey = rank;
+				}
+			}
 			if (r.date && !cur.dates.includes(r.date)) cur.dates.push(r.date);
 			if (!cur.desc && desc) cur.desc = desc;
 			if (desc && !cur.notes.includes(desc)) cur.notes.push(desc);
