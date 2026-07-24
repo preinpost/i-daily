@@ -157,6 +157,7 @@ export function WeeklyReportPane({
           <br />
           <span className="text-ink-2">
             차주 업무 내용은 집계 일자 기준 진척이 100%가 아닌(미완료) 업무들만 자동으로 이월해 정리합니다.
+            제출 전 차주 항목의 진척도/완료날짜를 한번 더 확인해 주세요.
           </span>
         </p>
 
@@ -306,7 +307,10 @@ export function WeeklyReportPane({
                 </section>
                 <section className="flex flex-col gap-1.5">
                   <div className="flex items-center gap-2">
-                    <h3 className="m-0 text-[13px] font-bold text-ink">{NEXT_WEEK_HEADER}</h3>
+                    <h3 className="m-0 text-[13px] font-bold text-ink">
+                      {NEXT_WEEK_HEADER}{" "}
+                      <span className="font-normal text-ink-2">(진척도/완료날짜 한번 더 확인)</span>
+                    </h3>
                     <button
                       type="button"
                       className="btn btn-ghost ml-auto"
