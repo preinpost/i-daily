@@ -58,7 +58,8 @@ const NO_SPACE = "기타";
 
 // 티켓키(또는 서술)로 전역 dedupe — 같은 티켓이 일일/스크럼 양쪽에 있어도 1건으로 병합.
 // 스페이스는 row.space 그대로 쓰고, 비어있으면 "기타".
-// 진척=최댓값, 마감=최신, 날짜/노트=합집합.
+// 진척=최댓값, 마감=가장 마지막에 기록된 값(최신 날짜의 기록), 날짜/노트=합집합.
+// 주의: rows 는 queryTasks 에서 date 오름차순으로 오므로, 뒤에 오는 행일수록 더 나중에 기록된 업무다.
 type ResolvedTask = DigestTask & { space: string };
 export function buildWeeklyDigest(
 	rows: TaskRow[],
@@ -96,7 +97,9 @@ export function buildWeeklyDigest(
 					cur.progress == null
 						? r.progress
 						: Math.max(cur.progress, r.progress);
-			if (r.due && r.due > cur.due) cur.due = r.due;
+			// 마감(완료 예정일)은 계속 바뀔 수 있으므로 값 크기 비교가 아니라
+			// '가장 마지막에 기록된 업무'의 마감을 그대로 반영한다(앞당겨진 날짜도 반영).
+			if (r.due) cur.due = r.due;
 			if (r.date && !cur.dates.includes(r.date)) cur.dates.push(r.date);
 			if (!cur.desc && desc) cur.desc = desc;
 			if (desc && !cur.notes.includes(desc)) cur.notes.push(desc);

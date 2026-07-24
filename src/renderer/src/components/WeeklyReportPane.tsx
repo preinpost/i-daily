@@ -296,7 +296,8 @@ export function WeeklyReportPane({
                   </div>
                   <textarea
                     ref={thisWeekRef}
-                    className={fieldCls + " resize-none overflow-hidden font-mono leading-relaxed placeholder:text-ink-2"}
+                    wrap="soft"
+                    className={fieldCls + " resize-none overflow-hidden whitespace-pre-wrap break-words font-mono leading-relaxed placeholder:text-ink-2"}
                     value={res.thisWeek}
                     onChange={(e) => setRes({ ...res, thisWeek: e.target.value })}
                     placeholder="(해당 기간 항목 없음)"
@@ -317,7 +318,8 @@ export function WeeklyReportPane({
                   </div>
                   <textarea
                     ref={nextWeekRef}
-                    className={fieldCls + " resize-none overflow-hidden font-mono leading-relaxed placeholder:text-ink-2"}
+                    wrap="soft"
+                    className={fieldCls + " resize-none overflow-hidden whitespace-pre-wrap break-words font-mono leading-relaxed placeholder:text-ink-2"}
                     value={res.nextWeek}
                     onChange={(e) => setRes({ ...res, nextWeek: e.target.value })}
                     placeholder="(해당 기간 항목 없음)"

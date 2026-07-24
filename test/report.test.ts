@@ -67,14 +67,14 @@ const rows = (): TaskRow[] => [
 	},
 ];
 
-test("digest: prev 제외 · 키 dedupe · 진척 최댓값 · 마감 최신 · 날짜/노트 합집합", () => {
+test("digest: prev 제외 · 키 dedupe · 진척 최댓값 · 마감 가장 마지막 기록 · 날짜/노트 합집합", () => {
 	const d = buildWeeklyDigest(rows(), "서재홍", "2026-07-10", "2026-07-16");
 	expect(d.count).toBe(2);
 	const cloud = d.spaces.find((s) => s.label === "cloudit")!;
 	const t = cloud.tasks[0];
 	expect(t.key).toBe("CLOUD-432");
 	expect(t.progress).toBe(100); // max(50,100)
-	expect(t.due).toBe("2026-07-23"); // 최신
+	expect(t.due).toBe("2026-07-20"); // 가장 마지막에 기록된 업무(07-15)의 마감 — 더 이른 날짜로 바뀌어도 반영
 	expect(t.dates).toEqual(["2026-07-14", "2026-07-15"]);
 	expect(t.notes).toEqual(["이슈 분석", "패치 적용"]);
 });
@@ -163,7 +163,7 @@ test("renderDigestText: Teams 붙여넣기용 스페이스 그룹 + 메타", () 
 	expect(txt).not.toContain("[주간업무보고]"); // 상단 헤더 제거
 	expect(txt).toContain("금주 업무 내용"); // 섹션 헤더
 	expect(txt).toContain("[cloudit]");
-	expect(txt).toContain("ㅇ[CLOUD-432] 이슈 분석 (100%, ~7/23)"); // ㅇ 글머리 + fmtMeta M/D
+	expect(txt).toContain("ㅇ[CLOUD-432] 이슈 분석 (100%, ~7/20)"); // ㅇ 글머리 + fmtMeta M/D(가장 마지막 기록의 마감)
 	expect(txt).toContain("  - 패치 적용"); // notes 파편 → 하위 불릿
 	expect(txt).not.toContain("전일 재기술");
 });
