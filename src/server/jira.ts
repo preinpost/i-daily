@@ -37,7 +37,9 @@ const RESOURCES_URL =
 	"https://api.atlassian.com/oauth/token/accessible-resources";
 const ME_URL = "https://api.atlassian.com/me"; // read:me → account_id(신원)
 // offline_access → refresh token. read:me → /me 로 account_id 확보(로그인).
-const SCOPES = "read:jira-work read:jira-user read:me offline_access";
+// write:jira-work → 마감일(duedate) 역방향 반영. 추가 시 기존 사용자는 재연결(재동의) 필요.
+const SCOPES =
+	"read:jira-work write:jira-work read:jira-user read:me offline_access";
 
 // 세션 TTL — 30일. httpOnly sid 쿠키와 동일.
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -355,6 +357,54 @@ function mapIssue(i: any, siteUrl: string): any {
 		project: f.project?.key || "",
 		url: `${siteUrl}/browse/${i.key}`,
 	};
+}
+
+// ───────────────────────── 마감일 역방향 반영 ─────────────────────────
+// 일지에서 마감일을 고치면 실제 티켓의 duedate 도 맞춘다.
+// "실제 티켓이 있는 경우만" — 없는 키(404)·권한 없음(403)은 에러가 아니라 조용히 skip.
+const KEY_RE = /^[A-Z][A-Z0-9_]+-\d+$/;
+export const isJiraKey = (k: string): boolean => KEY_RE.test((k || "").trim());
+
+export async function jiraSetDue(
+	backend: Backend,
+	db: DB,
+	keyRaw: string,
+	dueRaw: string,
+): Promise<any> {
+	const key = (keyRaw || "").trim().toUpperCase();
+	const due = (dueRaw || "").trim();
+	if (!isJiraKey(key)) return { ok: true, skipped: "not-a-key" };
+	if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due))
+		return { ok: false, error: "날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)." };
+
+	let t: JiraAuth;
+	try {
+		t = await getValidToken(backend, db);
+	} catch {
+		// 미연결이면 일지 저장 자체를 막을 이유는 없다 — 조용히 skip.
+		return { ok: true, skipped: "not-connected" };
+	}
+	try {
+		const url = `https://api.atlassian.com/ex/jira/${t.cloudId}/rest/api/3/issue/${encodeURIComponent(key)}`;
+		const r = await fetch(url, {
+			method: "PUT",
+			headers: {
+				Authorization: `Bearer ${t.accessToken}`,
+				Accept: "application/json",
+				"Content-Type": "application/json",
+			},
+			// duedate: null → 마감일 해제.
+			body: JSON.stringify({ fields: { duedate: due || null } }),
+		});
+		if (r.status === 204 || r.ok) return { ok: true, key, due };
+		// 없는 티켓/권한 없음 → 무시(사용자 흐름을 끊지 않는다).
+		if (r.status === 404) return { ok: true, skipped: "not-found", key };
+		if (r.status === 401 || r.status === 403)
+			return { ok: true, skipped: "forbidden", key };
+		return { ok: false, key, error: `Jira ${r.status}: ${await r.text()}` };
+	} catch (e) {
+		return { ok: false, key, error: msg(e) };
+	}
 }
 
 // ───────────────────────── 로그아웃(=연결 해제) ─────────────────────────

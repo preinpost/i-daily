@@ -39,6 +39,11 @@ export type Api = {
 		connect: () => Promise<any>;
 		logout: () => Promise<any>;
 		tickets: () => Promise<any>;
+		// 일지 마감일 → 실제 티켓 duedate 반영(없는 티켓·미연결은 skipped).
+		setDue: (
+			key: string,
+			due: string,
+		) => Promise<{ ok: boolean; key?: string; skipped?: string; error?: string }>;
 	};
 	me: () => Promise<{ user: string; isSetup: boolean } | null>;
 	agent: {

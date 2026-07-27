@@ -22,6 +22,9 @@ type ListSec = Section & { kind: "list" };
 
 type PrevEntry = { progress: number | ""; from: string; desc: string };
 
+// 실제 지라 티켓 키 형태만 서버로 보낸다(임의 메모성 키는 무시).
+const JIRA_KEY_RE = /^[A-Z][A-Z0-9_]+-\d+$/;
+
 export function ListSection({
 	sec,
 	curDate,
@@ -587,6 +590,28 @@ function ListItemRow({
 	if (!it.subs) it.subs = [];
 	const descRef = useRef<HTMLTextAreaElement>(null);
 	const { over, props } = useListItemDrop(sec.items, index, it, commit);
+	// 마감일 → 실제 티켓 duedate 반영. 연타(달력 조작) 대비 디바운스.
+	const dueSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	useEffect(
+		() => () => {
+			if (dueSyncRef.current) clearTimeout(dueSyncRef.current);
+		},
+		[],
+	);
+	function syncDueToJira(key: string, due: string) {
+		if (!JIRA_KEY_RE.test(key)) return; // 실제 티켓 키가 아니면 무시
+		if (dueSyncRef.current) clearTimeout(dueSyncRef.current);
+		dueSyncRef.current = setTimeout(async () => {
+			const r = await api<any>("PUT", "/api/jira/due", { key, due });
+			const j = r.json;
+			if (!r.ok || !j?.ok) {
+				toast(`${key} 마감일 반영 실패 — ${j?.error || r.status}`);
+				return;
+			}
+			if (j.skipped) return; // 없는 티켓·미연결·권한없음 → 조용히 무시
+			toast(due ? `${key} 마감일 → ${due} 반영` : `${key} 마감일 해제`);
+		}, 600);
+	}
 
 	useEffect(() => {
 		autoGrow(descRef.current);
@@ -697,9 +722,11 @@ function ListItemRow({
 				<input
 					type="date"
 					value={it.due || ""}
+					title="티켓 키가 있으면 실제 Jira 이슈의 마감일도 함께 수정됩니다"
 					onChange={(e) => {
 						it.due = e.target.value;
 						commit();
+						syncDueToJira((it.key || "").trim().toUpperCase(), it.due);
 					}}
 				/>
 			</span>

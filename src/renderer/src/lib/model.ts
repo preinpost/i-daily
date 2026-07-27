@@ -162,6 +162,23 @@ export function ensureDailyItem(
 }
 
 export type Kanban = { title: string; cat: string; items: Ticket[] };
+// 티켓 정렬 — 마감 임박 순(오름차순), 마감 없으면 맨 아래, 동일 마감이면 키 내림차순.
+export function sortTickets(list: Ticket[]): Ticket[] {
+	return [...list].sort((a, b) => {
+		const da = (a.due || "").trim();
+		const db = (b.due || "").trim();
+		if (da !== db) {
+			if (!da) return 1; // 마감 없음 → 아래로
+			if (!db) return -1;
+			return da < db ? -1 : 1; // YYYY-MM-DD 는 사전순 = 시간순
+		}
+		// 마감 동일(또는 둘 다 없음) → 티켓 이름 내림차순
+		return (b.key || "").localeCompare(a.key || "", undefined, {
+			numeric: true,
+			sensitivity: "base",
+		});
+	});
+}
 export function kanbanColumns(list: Ticket[]): Kanban[] {
 	const cols: [string, string][] = [
 		["indeterminate", "진행 중"],
@@ -170,11 +187,11 @@ export function kanbanColumns(list: Ticket[]): Kanban[] {
 	];
 	const seen: Record<string, boolean> = {};
 	const out: Kanban[] = cols.map(([cat, title]) => {
-		const items = list.filter((t) => (t.statusCat || "") === cat);
+		const items = sortTickets(list.filter((t) => (t.statusCat || "") === cat));
 		items.forEach((t) => (seen[t.key] = true));
 		return { title, cat, items };
 	});
-	const rest = list.filter((t) => !seen[t.key]);
+	const rest = sortTickets(list.filter((t) => !seen[t.key]));
 	if (rest.length) out.push({ title: "기타", cat: "rest", items: rest });
 	return out;
 }

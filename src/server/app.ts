@@ -28,6 +28,7 @@ import {
 	jiraConnect,
 	jiraCallback,
 	jiraTickets,
+	jiraSetDue,
 	jiraLogout,
 } from "./jira.ts";
 
@@ -216,6 +217,14 @@ export function buildApp(backend: Backend, db: DB, env: Env): Hono {
 	});
 	app.get("/api/jira/tickets", async (c) => {
 		return c.json(await jiraTickets(backend, db));
+	});
+	// 일지의 마감일 → 실제 티켓 duedate 반영. 없는 티켓·미연결은 조용히 skip.
+	app.put("/api/jira/due", async (c) => {
+		const b = (await c.req.json().catch(() => ({}))) as {
+			key?: string;
+			due?: string;
+		};
+		return c.json(await jiraSetDue(backend, db, b.key || "", b.due || ""));
 	});
 	app.post("/api/jira/logout", async (c) => {
 		// 세션 sid 는 쿠키에서 판독 — 로그아웃은 jira_auth + 세션 동시 삭제.

@@ -11,6 +11,7 @@ import {
 	todayStr,
 	kstParts,
 } from "../src/shared/model.ts";
+import { kanbanColumns } from "../src/renderer/src/lib/model.ts";
 
 // jiraBase 는 렌더 함수에 인자로 전달(전역 아님). host만 — /browse/ 는 자동.
 const JIRA = "https://jira.test";
@@ -177,4 +178,21 @@ test("renderScrum/Html: 빈 스페이스 라벨을 [?] 아닌 [스페이스 없�
 	const html = renderScrumHtml(JIRA, s as any);
 	expect(html).toContain("[스페이스 없음]");
 	expect(html).not.toContain("[?]");
+});
+
+// ── 내 티켓 정렬 ── 마감 임박 우선 · 마감 없음 최하단 · 동일 마감이면 키 내림차순
+test("kanbanColumns: 마감 임박 순 · 마감 없으면 맨 아래 · 동일 마감은 키 내림차순", () => {
+	const mk = (key: string, due: string, statusCat = "new") =>
+		({ key, due, statusCat, summary: "", status: "", url: "" }) as any;
+	const cols = kanbanColumns([
+		mk("AB-1", ""),
+		mk("AB-9", "2026-03-10"),
+		mk("AB-2", "2026-01-05"),
+		mk("AB-10", "2026-01-05"),
+		mk("AB-3", ""),
+	]);
+	const todo = cols.find((c) => c.cat === "new")!;
+	expect(todo.items.map((t: any) => t.key).join(",")).toBe(
+		"AB-10,AB-2,AB-9,AB-3,AB-1",
+	);
 });

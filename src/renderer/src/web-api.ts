@@ -71,6 +71,8 @@ export const webApi: Api = {
 		},
 		logout: () => post("/api/jira/logout"),
 		tickets: () => get("/api/jira/tickets"),
+		setDue: (key: string, due: string) =>
+			put("/api/jira/due", { key, due }),
 	},
 	me: () => get("/api/me"),
 	agent: {
