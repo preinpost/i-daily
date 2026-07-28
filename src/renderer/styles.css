@@ -73,6 +73,10 @@
   body {
     margin: 0;
   }
+  html {
+    /* 섹션 접기 등으로 세로 스크롤바가 생겼다 사라질 때 레이아웃이 흔들리지 않도록 */
+    scrollbar-gutter: stable;
+  }
   body {
     background: var(--bg);
     color: var(--ink);
