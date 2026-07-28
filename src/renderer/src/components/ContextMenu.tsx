@@ -9,7 +9,15 @@ import {
   type ReactNode,
 } from "react";
 
-export type MenuItem = { label: string; onClick: () => void } | { sep: true };
+// children 이 있으면 서브메뉴. 함수면 hover 시점에 비동기로 항목을 불러온다.
+export type MenuItem =
+	| {
+			label: string;
+			onClick?: () => void;
+			children?: MenuItem[] | (() => Promise<MenuItem[]>);
+			disabled?: boolean;
+	  }
+	| { sep: true };
 type OpenFn = (x: number, y: number, items: MenuItem[]) => void;
 
 const CtxMenuCtx = createContext<OpenFn>(() => {});
@@ -65,26 +73,99 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
       {children}
       {menu && (
         <div ref={ref} className="ctxmenu" style={{ left: -9999, top: -9999 }}>
-          {menu.items.map((it, i) =>
-            "sep" in it ? (
-              <div key={i} className="my-1 mx-0.5 h-px bg-line" />
-            ) : (
-              <button
-                key={i}
-                type="button"
-                className="ctxitem"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  close();
-                  it.onClick();
-                }}
-              >
-                {it.label}
-              </button>
-            ),
-          )}
+          <MenuList items={menu.items} close={close} />
         </div>
       )}
     </CtxMenuCtx.Provider>
+  );
+}
+
+// 한 단계의 메뉴 목록. children 이 있는 항목은 hover 시 서브메뉴를 편다.
+function MenuList({ items, close }: { items: MenuItem[]; close: () => void }) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+
+  return (
+    <>
+      {items.map((it, i) =>
+        "sep" in it ? (
+          <div key={i} className="my-1 mx-0.5 h-px bg-line" />
+        ) : it.children ? (
+          <div
+            key={i}
+            className="ctxrow"
+            onMouseEnter={() => setOpenIdx(i)}
+            onMouseLeave={() => setOpenIdx((v) => (v === i ? null : v))}
+          >
+            <button type="button" className="ctxitem" onClick={(e) => e.stopPropagation()}>
+              <span>{it.label}</span>
+              <span className="text-ink-2">▸</span>
+            </button>
+            {openIdx === i && <SubMenu source={it.children} close={close} />}
+          </div>
+        ) : (
+          <button
+            key={i}
+            type="button"
+            className="ctxitem"
+            disabled={it.disabled}
+            onMouseEnter={() => setOpenIdx(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              close();
+              it.onClick?.();
+            }}
+          >
+            {it.label}
+          </button>
+        ),
+      )}
+    </>
+  );
+}
+
+// 서브메뉴 — 배열이면 즉시, 함수면 열릴 때 한 번 await 해서 채운다.
+function SubMenu({
+  source,
+  close,
+}: {
+  source: MenuItem[] | (() => Promise<MenuItem[]>);
+  close: () => void;
+}) {
+  const isStatic = Array.isArray(source);
+  const [items, setItems] = useState<MenuItem[] | null>(isStatic ? source : null);
+  const [error, setError] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isStatic) return;
+    let alive = true;
+    (source as () => Promise<MenuItem[]>)()
+      .then((r) => alive && setItems(r))
+      .catch((e) => alive && setError(String((e as Error)?.message || e)));
+    return () => {
+      alive = false;
+    };
+  }, [source, isStatic]);
+
+  // 오른쪽 공간이 부족하면 왼쪽으로 뒤집는다.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.classList.remove("flip");
+    if (el.getBoundingClientRect().right > window.innerWidth - 8) el.classList.add("flip");
+  }, [items, error]);
+
+  return (
+    <div ref={ref} className="ctxmenu ctxsub">
+      {error ? (
+        <div className="px-3 py-2 text-[12px] text-danger">{error}</div>
+      ) : !items ? (
+        <div className="px-3 py-2 text-[12px] text-ink-2">불러오는 중…</div>
+      ) : !items.length ? (
+        <div className="px-3 py-2 text-[12px] text-ink-2">가능한 항목 없음</div>
+      ) : (
+        <MenuList items={items} close={close} />
+      )}
+    </div>
   );
 }

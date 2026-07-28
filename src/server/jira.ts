@@ -407,6 +407,112 @@ export async function jiraSetDue(
 	}
 }
 
+// ───────────────────────── 완료 처리(워크플로우 전이) ─────────────────────────
+// 워크플로우마다 완료 전이의 이름이 다르다(완료/Done/해결됨/Closed…).
+// 이름 대신 to.statusCategory.key === "done" 으로 판별하고, 후보가 여럿이면
+// 클라이언트가 서브메뉴로 고르게 목록을 그대로 넘긴다.
+// cat = 도착 상태의 statusCategory(new / indeterminate / done) — 칸반 3열과 같은 축.
+export type JiraTransition = {
+	id: string;
+	name: string;
+	to: string;
+	cat: string;
+};
+
+async function transitionsOf(
+	t: JiraAuth,
+	key: string,
+): Promise<JiraTransition[]> {
+	const url = `https://api.atlassian.com/ex/jira/${t.cloudId}/rest/api/3/issue/${encodeURIComponent(key)}/transitions?expand=transitions.fields`;
+	const r = await fetch(url, {
+		headers: {
+			Authorization: `Bearer ${t.accessToken}`,
+			Accept: "application/json",
+		},
+	});
+	if (!r.ok) throw new Error(`Jira ${r.status}: ${await r.text()}`);
+	const data = (await r.json()) as any;
+	// 전이는 워크플로우가 정한 것만 온다 — 전부 넘기고 분류는 클라이언트가 한다.
+	return (data.transitions || []).map((x: any) => ({
+		id: String(x.id),
+		name: x.name || "",
+		to: x.to?.name || "",
+		cat: x.to?.statusCategory?.key || "",
+	}));
+}
+
+// 가능한 전이 목록 조회(우클릭 서브메뉴가 열릴 때 호출).
+export async function jiraTransitions(
+	backend: Backend,
+	db: DB,
+	keyRaw: string,
+): Promise<any> {
+	const key = (keyRaw || "").trim().toUpperCase();
+	if (!isJiraKey(key)) return { ok: false, error: "티켓 키가 올바르지 않습니다." };
+	let t: JiraAuth;
+	try {
+		t = await getValidToken(backend, db);
+	} catch (e) {
+		return { ok: false, error: msg(e) };
+	}
+	try {
+		return { ok: true, key, transitions: await transitionsOf(t, key) };
+	} catch (e) {
+		return { ok: false, key, error: msg(e) };
+	}
+}
+
+// 선택한 전이 실행. transitionId 가 없으면 완료(done) 후보가 하나일 때만 자동 선택.
+export async function jiraTransition(
+	backend: Backend,
+	db: DB,
+	keyRaw: string,
+	transitionIdRaw?: string,
+): Promise<any> {
+	const key = (keyRaw || "").trim().toUpperCase();
+	if (!isJiraKey(key)) return { ok: false, error: "티켓 키가 올바르지 않습니다." };
+	let t: JiraAuth;
+	try {
+		t = await getValidToken(backend, db);
+	} catch (e) {
+		return { ok: false, error: msg(e) };
+	}
+	try {
+		let id = (transitionIdRaw || "").trim();
+		let name = "";
+		if (!id) {
+			const list = (await transitionsOf(t, key)).filter(
+				(x) => x.cat === "done",
+			);
+			if (!list.length)
+				return { ok: false, key, error: "완료로 보낼 수 있는 전이가 없습니다." };
+			if (list.length > 1)
+				return { ok: false, key, error: "완료 전이가 여러 개입니다 — 선택이 필요합니다.", transitions: list };
+			id = list[0].id;
+			name = list[0].name;
+		}
+		const url = `https://api.atlassian.com/ex/jira/${t.cloudId}/rest/api/3/issue/${encodeURIComponent(key)}/transitions`;
+		const r = await fetch(url, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${t.accessToken}`,
+				Accept: "application/json",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ transition: { id } }),
+		});
+		if (r.status === 204 || r.ok) return { ok: true, key, id, name };
+		if (r.status === 404)
+			return { ok: false, key, error: "티켓을 찾을 수 없습니다." };
+		if (r.status === 401 || r.status === 403)
+			return { ok: false, key, error: "권한이 없습니다." };
+		// 400 = 필수 필드(해결책 등)를 요구하는 워크플로우 — 본문을 그대로 노출해 원인을 알린다.
+		return { ok: false, key, error: `Jira ${r.status}: ${await r.text()}` };
+	} catch (e) {
+		return { ok: false, key, error: msg(e) };
+	}
+}
+
 // ───────────────────────── 로그아웃(=연결 해제) ─────────────────────────
 // 로그인=연결이므로, 해제는 jira_auth + 세션 모두 삭제(완전 로그아웃).
 // sid 는 요청 쿠키에서(app.ts 가 판독해 전달). account_id 의 데이터는 유지(재로그인 시 복귀).

@@ -29,6 +29,8 @@ import {
 	jiraCallback,
 	jiraTickets,
 	jiraSetDue,
+	jiraTransitions,
+	jiraTransition,
 	jiraLogout,
 } from "./jira.ts";
 
@@ -225,6 +227,20 @@ export function buildApp(backend: Backend, db: DB, env: Env): Hono {
 			due?: string;
 		};
 		return c.json(await jiraSetDue(backend, db, b.key || "", b.due || ""));
+	});
+	// 우클릭 → 완료 처리. 서브메뉴가 먼저 후보 전이를 조회하고, 선택 시 실행한다.
+	app.get("/api/jira/transitions", async (c) => {
+		const key = c.req.query("key") || "";
+		return c.json(await jiraTransitions(backend, db, key));
+	});
+	app.post("/api/jira/transition", async (c) => {
+		const b = (await c.req.json().catch(() => ({}))) as {
+			key?: string;
+			transitionId?: string;
+		};
+		return c.json(
+			await jiraTransition(backend, db, b.key || "", b.transitionId),
+		);
 	});
 	app.post("/api/jira/logout", async (c) => {
 		// 세션 sid 는 쿠키에서 판독 — 로그아웃은 jira_auth + 세션 동시 삭제.

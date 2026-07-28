@@ -306,6 +306,39 @@
   .ctxitem:hover {
     background: color-mix(in srgb, var(--accent) 14%, var(--panel));
   }
+  .ctxitem:disabled {
+    color: var(--ink-2);
+    cursor: default;
+    opacity: 0.6;
+  }
+  .ctxitem:disabled:hover {
+    background: transparent;
+  }
+  /* 서브메뉴 — 부모 항목(.ctxrow) 오른쪽에 붙는다. .ctxmenu 의 fixed 를 absolute 로 덮어쓴다. */
+  .ctxrow {
+    position: relative;
+    display: flex;
+  }
+  .ctxrow > .ctxitem {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+  }
+  .ctxsub {
+    position: absolute;
+    left: 100%;
+    top: -5px;
+    margin-left: 2px;
+  }
+  /* 오른쪽 공간이 없으면 왼쪽으로 펼친다(JS 가 붙임) */
+  .ctxsub.flip {
+    left: auto;
+    right: 100%;
+    margin-left: 0;
+    margin-right: 2px;
+  }
 
   /* details/summary (규정 체크리스트) */
   .rules summary {

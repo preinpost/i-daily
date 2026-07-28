@@ -44,6 +44,18 @@ export type Api = {
 			key: string,
 			due: string,
 		) => Promise<{ ok: boolean; key?: string; skipped?: string; error?: string }>;
+		// 가능한 전이 목록. cat = 도착 상태의 statusCategory(new/indeterminate/done).
+		transitions: (key: string) => Promise<{
+			ok: boolean;
+			key?: string;
+			transitions?: { id: string; name: string; to: string; cat: string }[];
+			error?: string;
+		}>;
+		// 전이 실행. transitionId 생략 시 후보가 하나일 때만 자동 선택.
+		transition: (
+			key: string,
+			transitionId?: string,
+		) => Promise<{ ok: boolean; key?: string; name?: string; error?: string }>;
 	};
 	me: () => Promise<{ user: string; isSetup: boolean } | null>;
 	agent: {

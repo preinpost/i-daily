@@ -73,6 +73,11 @@ export const webApi: Api = {
 		tickets: () => get("/api/jira/tickets"),
 		setDue: (key: string, due: string) =>
 			put("/api/jira/due", { key, due }),
+		// 완료 후보 전이 조회 / 전이 실행.
+		transitions: (key: string) =>
+			get("/api/jira/transitions?key=" + encodeURIComponent(key)),
+		transition: (key: string, transitionId?: string) =>
+			post("/api/jira/transition", { key, transitionId }),
 	},
 	me: () => get("/api/me"),
 	agent: {
