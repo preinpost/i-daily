@@ -17,13 +17,13 @@ import {
 	normalizeDoc,
 	shiftDate,
 	todayDailyItems,
-	ymd,
 } from "./lib/model";
 import {
 	dailyToBlock,
 	renderScrum,
 	renderScrumHtml,
 	serializeDoc,
+	todayStr,
 } from "../../shared/model";
 import type { Config, Doc, Meta } from "./types";
 
@@ -48,7 +48,9 @@ export function App() {
 	const [config, setConfig] = useState<Config>(normCfg(null));
 	const [spaceHistory, setSpaceHistory] = useState<string[]>([]);
 	const [firstRun, setFirstRun] = useState(false);
-	const [curDate, setCurDate] = useState(ymd(new Date()));
+	// 서버 응답(부팅 1회)이 아니라 매번 new Date() → KST 로 계산. 앱을 켜둔 채
+	// 자정을 넘겨도 '오늘'이 어제로 굳지 않는다.
+	const [curDate, setCurDate] = useState(() => todayStr());
 	const [teams, setTeams] = useState("");
 	const [saveState, setSaveState] = useState({ cls: "", note: "—" });
 	const [, setVer] = useState(0);
@@ -286,7 +288,8 @@ export function App() {
 				return;
 			}
 			setAuthed(true);
-			const today = r.json.today as string;
+			// 서버가 준 today 는 참고만; 기준은 항상 클라이언트에서 재계산한 KST 오늘.
+			const today = todayStr();
 			const cfg = normCfg(r.json.config || {});
 			const m: Meta = { today, owner: cfg.owner, jiraBase: cfg.jiraBase };
 			metaRef.current = m;
@@ -302,6 +305,23 @@ export function App() {
 			}
 		})();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	// 자정 롤오버 감지 — 세션을 밤새 켜둔 채 두면 meta.today 가 어제로 고정되어
+	// '오늘로 가기'·'지난 기록' 판정이 어긋난다. 주기적·복귀 시에 new Date() 로 재계산.
+	useEffect(() => {
+		const sync = () => {
+			const t = todayStr();
+			setMeta((m) => (m.today === t || m.today === null ? m : { ...m, today: t }));
+		};
+		const id = setInterval(sync, 30_000);
+		document.addEventListener("visibilitychange", sync);
+		window.addEventListener("focus", sync);
+		return () => {
+			clearInterval(id);
+			document.removeEventListener("visibilitychange", sync);
+			window.removeEventListener("focus", sync);
+		};
 	}, []);
 
 	// Jira OAuth 팝업이 로그인 완료를 postMessage 로 알리면(= 새 sid 쿠키 반영됨) 재부팅.
