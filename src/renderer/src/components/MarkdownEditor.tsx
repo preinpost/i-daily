@@ -8,6 +8,7 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { Markdown } from "tiptap-markdown";
+import { Extension } from "@tiptap/core";
 import { useEffect, useRef } from "react";
 import {
   Undo2,
@@ -31,6 +32,54 @@ import {
   Rows3,
 } from "lucide-react";
 
+/* ── Tab / Shift-Tab 처리 ─────────────────────────────────
+   기본 동작(브라우저 포커스 이동)을 막고 문맥별로 들여쓰기를 처리한다.
+   - 표: 다음/이전 셀
+   - 리스트/체크리스트: 뎁스 증가·감소
+   - 코드블록: CodeBlock 확장의 enableTabIndentation 에 위임(2칸)
+   - 그 외: 아무것도 안 하지만 포커스는 유지
+---------------------------------------------------------- */
+const INDENT = "  ";
+const inCodeBlock = (editor: Editor) =>
+  editor.state.selection.$from.parent.type.name === "codeBlock";
+
+const TabHandling = Extension.create({
+  name: "tabHandling",
+  priority: 1000, // StarterKit·Table 의 기본 Tab 바인딩보다 먼저 잡는다
+  addKeyboardShortcuts() {
+    return {
+      Tab: ({ editor }) => {
+        if (inCodeBlock(editor)) {
+          // 커서만 있는 경우 CodeBlock 내장 처리는 insertContent("  ") 를 쓰는데,
+          // tiptap-markdown 이 insertContent 문자열을 마크다운으로 파싱해서 공백이 사라진다.
+          // 그래서 이 경우만 직접 트랜잭션으로 공백을 넣는다.
+          if (editor.state.selection.empty) {
+            return editor.commands.command(({ tr, state, dispatch }) => {
+              if (dispatch) {
+                const { from, to } = state.selection;
+                dispatch(tr.insertText(INDENT, from, to).scrollIntoView());
+              }
+              return true;
+            });
+          }
+          return false; // 범위 선택은 CodeBlock 확장이 줄 단위로 처리
+        }
+        if (editor.isActive("table")) return editor.commands.goToNextCell() || true;
+        if (editor.isActive("taskItem")) return editor.commands.sinkListItem("taskItem") || true;
+        if (editor.isActive("listItem")) return editor.commands.sinkListItem("listItem") || true;
+        return true; // 포커스가 밖으로 나가지 않도록 소비
+      },
+      "Shift-Tab": ({ editor }) => {
+        if (inCodeBlock(editor)) return false;
+        if (editor.isActive("table")) return editor.commands.goToPreviousCell() || true;
+        if (editor.isActive("taskItem")) return editor.commands.liftListItem("taskItem") || true;
+        if (editor.isActive("listItem")) return editor.commands.liftListItem("listItem") || true;
+        return true;
+      },
+    };
+  },
+});
+
 type Props = {
   value: string;
   onChange: (markdown: string) => void;
@@ -45,7 +94,11 @@ export function MarkdownEditor({ value, onChange, placeholder }: Props) {
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        // 코드블록 안에서 Tab/Shift-Tab 들여쓰기 활성화 (기본값 false)
+        codeBlock: { enableTabIndentation: true, tabSize: 2 },
+      }),
+      TabHandling,
       TaskList,
       TaskItem.configure({ nested: true }),
       Table.configure({ resizable: true }),
