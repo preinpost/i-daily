@@ -5,7 +5,6 @@ export function DayCard({
 	today,
 	onShift,
 	onPickDate,
-	onCarry,
 	onGenerateScrum,
 	teams,
 	onCopy,
@@ -15,7 +14,6 @@ export function DayCard({
 	today?: string | null;
 	onShift: (days: number) => void;
 	onPickDate: (date: string) => void;
-	onCarry: () => void;
 	onGenerateScrum: () => void;
 	teams: string;
 	onCopy: () => void;
@@ -69,14 +67,6 @@ export function DayCard({
 						onClick={onCopyMd}
 					>
 						📄 마크다운 복사
-					</button>
-					<button
-						type="button"
-						className="btn btn-ghost"
-						title="직전 근무일 '일일 진행 업무'를 이 날짜 '전일 진행 업무'로 이월하고 초안을 채웁니다"
-						onClick={onCarry}
-					>
-						↧ 전일 이월
 					</button>
 				</div>
 			</div>

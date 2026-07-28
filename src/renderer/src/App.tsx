@@ -170,37 +170,6 @@ export function App() {
 		bump();
 	}
 
-	async function carry() {
-		if (
-			dirty.current &&
-			!confirm(
-				"저장하지 않은 변경이 있습니다. 이월하면 사라집니다. 계속할까요?",
-			)
-		)
-			return;
-		if (
-			!confirm(
-				"직전 근무일 '일일 진행 업무'를 '전일 진행 업무'로 이월하고 초안을 채웁니다.\n현재 " +
-					curDateRef.current +
-					" 입력을 덮어쓸까요? (이월은 즉시 서버에 저장됩니다)",
-			)
-		)
-			return;
-		const r = await api<any>(
-			"POST",
-			"/api/day/" + curDateRef.current + "/carry",
-		);
-		if (r.ok && r.json) {
-			docRef.current = r.json.data;
-			normalizeDoc(docRef.current!);
-			applyTeams(r.json.teams, r.json.teamsHtml || "");
-			setDirty(false);
-			setDot("", "이월·저장됨");
-			toast("이월 완료 — 진척률·마감일 확인하세요");
-			bump();
-		} else toast("이월 실패");
-	}
-
 	// 데일리 스크럼 생성 — 금일 블록을 오늘 일일 진행 업무로 확정하고(이슈·협업 유지)
 	// Teams 붙여넣기 텍스트를 클라이언트에서 즉시 렌더. 저장하면 서버도 같은 텍스트를 반환.
 	function generateScrum() {
@@ -390,7 +359,6 @@ export function App() {
 					today={meta.today}
 					onShift={(days) => loadDate(shiftDate(curDate, days))}
 					onPickDate={(date) => loadDate(date)}
-					onCarry={carry}
 					onGenerateScrum={generateScrum}
 					teams={teams}
 					onCopy={copy}
