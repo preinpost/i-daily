@@ -27,6 +27,13 @@ export default defineConfig({
 		fs: { allow: [resolve(__dirname, "src")] },
 		proxy: {
 			"/api": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			// MCP PoC — 클라이언트는 보통 8787 직행. vite 경유 테스트용.
+			"/mcp": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/authorize": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/callback": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/token": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/register": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/.well-known": { target: "http://127.0.0.1:8787", changeOrigin: true },
 		},
 	},
 });
