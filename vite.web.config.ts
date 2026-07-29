@@ -27,12 +27,17 @@ export default defineConfig({
 		fs: { allow: [resolve(__dirname, "src")] },
 		proxy: {
 			"/api": { target: "http://127.0.0.1:8787", changeOrigin: true },
-			// MCP PoC — 클라이언트는 보통 8787 직행. vite 경유 테스트용.
 			"/mcp": { target: "http://127.0.0.1:8787", changeOrigin: true },
-			"/authorize": { target: "http://127.0.0.1:8787", changeOrigin: true },
-			"/callback": { target: "http://127.0.0.1:8787", changeOrigin: true },
-			"/token": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			// OAuth 엔드포인트 폴백 — 클라이언트가 issuer 대신 루트 경로로 칠 때
+			// SPA(index.html)가 삼키지 않도록 반드시 워커로 넘긴다.
 			"/register": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/authorize": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/token": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/userinfo": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/revoke": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/introspect": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/sign-in": { target: "http://127.0.0.1:8787", changeOrigin: true },
+			"/consent": { target: "http://127.0.0.1:8787", changeOrigin: true },
 			"/.well-known": { target: "http://127.0.0.1:8787", changeOrigin: true },
 		},
 	},

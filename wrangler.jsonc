@@ -16,16 +16,8 @@
 			"migrations_dir": "./migrations"
 		}
 	],
-	// MCP OAuthProvider 토큰·그랜트 저장(+ /authorize state).
-	"kv_namespaces": [
-		{
-			"binding": "OAUTH_KV",
-			"id": "0268d726a3444a2785ed46748a2ec2e7",
-			"preview_id": "90ac80246aa447ec9a33efcac7e41f53"
-		}
-	],
-	// 빌드된 React SPA(정적) 서빙. electron-vite 대신 웹 전용 vite 빌드 산출물.
-	// run_worker_first: /api/* · MCP/OAuth 경로는 SPA fallback 보다 워커 우선.
+	// 빌드된 React SPA(정적) 서빙.
+	// run_worker_first: /api · MCP/OAuth · auth UI 는 SPA fallback 보다 워커 우선.
 	"assets": {
 		"directory": "./dist/web",
 		"not_found_handling": "single-page-application",
@@ -34,9 +26,14 @@
 			"/api/*",
 			"/mcp",
 			"/mcp/*",
+			"/register",
 			"/authorize",
 			"/token",
-			"/register",
+			"/userinfo",
+			"/revoke",
+			"/introspect",
+			"/sign-in",
+			"/consent",
 			"/.well-known/*"
 		]
 	},

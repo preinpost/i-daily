@@ -159,9 +159,43 @@ Jira 연동(=로그인)에 필요한 OAuth 2.0 (3LO) 클라이언트 `client_id`
 - 배포: `npx wrangler secret put JIRA_CLIENT_ID` / `npx wrangler secret put JIRA_CLIENT_SECRET` (값 붙여넣고 엔터).
   **`wrangler deploy` 재실행 불필요** — secret put 은 이미 배포된 Worker에 즉시 반영된다.
 - 등록 확인: `npx wrangler secret list` (값은 안 보여주고 이름만 나온다).
-- Atlassian 앱의 **Callback URL**: `https://i-daily.<your-subdomain>.workers.dev/api/jira/callback` (로컬 dev: `http://127.0.0.1:8787/api/jira/callback`).
-- 기타 env: `JIRA_REDIRECT_URI`(콜백 URL 고정, 미설정 시 요청 오리진 사용).
+- Atlassian 앱의 **Callback URL** — Better Auth 전환 후는 아래 두 개를 등록한다.
+  - 운영: `https://i-daily.<your-subdomain>.workers.dev/api/auth/callback/atlassian`
+  - 로컬 dev: `http://localhost:5173/api/auth/callback/atlassian`
+  - (레거시) `/api/jira/callback` 은 구버전 호환용.
+- 기타 env: `JIRA_REDIRECT_URI`(레거시 콜백 URL 고정).
 - 미설정 시 로그인 페이지에 "서버에 Jira OAuth 클라이언트가 설정되지 않았습니다" 경고가 뜨고 로그인 버튼이 비활성화된다(정상 동작). 둘 등록하면 새로고침만으로 사라진다.
+
+### Better Auth (웹 세션 + MCP OAuth 인가서버)
+
+웹 로그인과 MCP OAuth 를 모두 Better Auth 가 담당한다. **배포 전 secret 2개를 반드시 등록**해야 한다.
+
+```bash
+# 공개 base URL — issuer·MCP resource(aud)·쿠키 오리진을 전부 이 값이 결정한다.
+npx wrangler secret put BETTER_AUTH_URL      # 예: https://i-daily.<sub>.workers.dev
+
+# 서명 시크릿(≥32자). 짧으면 코드가 dev 기본값으로 백오프한다.
+npx wrangler secret put BETTER_AUTH_SECRET   # openssl rand -base64 32
+```
+
+> `BETTER_AUTH_URL` 을 빼면 `http://localhost:5173` 로 폴백되어 운영에서 OAuth 가 전부 깨진다.
+
+생성되는 주요 경로:
+
+| 용도 | 경로 |
+| --- | --- |
+| issuer | `{BETTER_AUTH_URL}/api/auth` |
+| MCP resource (aud) | `{BETTER_AUTH_URL}/mcp` |
+| AS metadata | `/.well-known/oauth-authorization-server/api/auth` |
+| Protected resource metadata | `/.well-known/oauth-protected-resource/mcp` |
+
+일부 MCP 클라이언트(예: MCP Inspector)는 metadata 의 `*_endpoint` 를 안 읽고
+`issuer + /authorize` 같은 관습 경로로 친다. 그래서 `/authorize`·`/token`·`/register` 등
+루트 별칭을 워커가 받아 Better Auth 로 넘긴다(`OAUTH_PATH_ALIASES`).
+
+> [!warning] 이 경로들은 **`wrangler.jsonc` 의 `assets.run_worker_first`** 에도 들어있어야 한다.
+> 빠지면 SPA fallback 이 인가 요청을 삼켜 앱 화면이 뜨고 OAuth 가 조용히 실패한다.
+> 로컬 dev 는 `vite.web.config.ts` 의 proxy 에도 동일 경로가 필요하다.
 
 ### 카카오 REST API 키 (서버 전역 secret)
 

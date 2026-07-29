@@ -12,12 +12,16 @@ JIRA_CLIENT_SECRET=
 # 이유: 콜백이 앱과 같은 오리진으로 돌아와야(vite 프록시 → /api → wrangler)
 # 세션 쿠키(sid)가 앱에 저장되고 postMessage 로 로그인 완료를 알릴 수 있다.
 # 127.0.0.1:8787 로 두면 쿠키가 다른 오리진에 저장되어 “연동 안됨” 으로 보인다.
+# (레거시) JIRA_REDIRECT_URI — Better Auth 전환 후 콜백은 /api/auth/callback/atlassian
 JIRA_REDIRECT_URI=http://localhost:5173/api/jira/callback
 
-# MCP Atlassian 콜백 — 기본은 JIRA_REDIRECT_URI(/api/jira/callback) 재사용.
-# Atlassian 콘솔에 URL 을 새로 넣을 필요 없음. 비우면 JIRA_REDIRECT_URI → 없으면
-# 요청 origin + /api/jira/callback.
-# MCP_ATLASSIAN_REDIRECT_URI=
+# Better Auth (웹 세션 + MCP OAuth AS). 운영은 wrangler secret.
+# 로컬은 Vite 오리진(5173) — 프록시로 /api·/.well-known → 8787.
+# Atlassian 앱 Callback URL 에 추가:
+#   http://localhost:5173/api/auth/callback/atlassian
+#   https://i-daily.<subdomain>.workers.dev/api/auth/callback/atlassian
+BETTER_AUTH_URL=http://localhost:5173
+BETTER_AUTH_SECRET=dev-secret-at-least-32-characters-long!!
 
 # 카카오 로컬 API REST 키(점심 탭 맛집 검색) — developers.kakao.com/console/my-app
 # 내 앱 → 플랫폼 Web 추가 → 사이트 도메인 등록 후 REST API 키 발급.

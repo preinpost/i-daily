@@ -1,7 +1,6 @@
-// mcp/server.ts — MCP 2026-07-28 읽기 전용 서버 factory (PoC).
-// createMcpHandler 가 요청마다 이 factory 를 호출한다. 쓰기는 등록하지 않는다.
+// mcp/server.ts — MCP 2026-07-28 읽기 전용 서버 (Better Auth Bearer props 주입).
 import { McpServer } from "@modelcontextprotocol/server";
-import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
+import { createMcpHandler } from "agents/mcp/server";
 import { drizzle } from "drizzle-orm/d1";
 import { z } from "zod";
 import { d1Backend } from "../shared/store-drizzle.ts";
@@ -11,11 +10,9 @@ import {
 	serializeDoc,
 	type Doc,
 } from "../shared/model.ts";
+import type { McpProps } from "../auth/index.ts";
 
-export type McpProps = {
-	accountId: string;
-	name: string;
-};
+export type { McpProps };
 
 const DATE = z
 	.string()
@@ -33,22 +30,11 @@ function err(message: string) {
 	return text({ ok: false, error: message });
 }
 
-function requireProps(): McpProps | null {
-	const auth = getMcpAuthContext();
-	const accountId = String(auth?.props?.accountId || "").trim();
-	if (!accountId) return null;
-	return {
-		accountId,
-		name: String(auth?.props?.name || "").trim(),
-	};
-}
-
 function resolveDate(date?: string): string {
 	return date || todayStr();
 }
 
-/** 요청마다 새 서버. env 는 fetch 클로저에서 주입. */
-export function createIDailyMcpServer(env: Env): McpServer {
+export function createIDailyMcpServer(env: Env, props: McpProps): McpServer {
 	const server = new McpServer({
 		name: "i-daily",
 		version: "0.2.31",
@@ -60,11 +46,7 @@ export function createIDailyMcpServer(env: Env): McpServer {
 			description: "현재 MCP 인가 사용자(Atlassian account_id)를 반환한다.",
 			inputSchema: {},
 		},
-		async () => {
-			const props = requireProps();
-			if (!props) return err("unauthorized");
-			return text({ ok: true, ...props });
-		},
+		async () => text({ ok: true, ...props }),
 	);
 
 	server.registerTool(
@@ -74,8 +56,6 @@ export function createIDailyMcpServer(env: Env): McpServer {
 			inputSchema: {},
 		},
 		async () => {
-			const props = requireProps();
-			if (!props) return err("unauthorized");
 			const db = drizzle(env.DB);
 			const backend = d1Backend(db, props.accountId);
 			const cfg = await backend.readConfig();
@@ -97,8 +77,6 @@ export function createIDailyMcpServer(env: Env): McpServer {
 			inputSchema: { date: DATE },
 		},
 		async ({ date }) => {
-			const props = requireProps();
-			if (!props) return err("unauthorized");
 			const d = resolveDate(date);
 			const db = drizzle(env.DB);
 			const backend = d1Backend(db, props.accountId);
@@ -116,8 +94,6 @@ export function createIDailyMcpServer(env: Env): McpServer {
 			inputSchema: { date: DATE },
 		},
 		async ({ date }) => {
-			const props = requireProps();
-			if (!props) return err("unauthorized");
 			const d = resolveDate(date);
 			const db = drizzle(env.DB);
 			const backend = d1Backend(db, props.accountId);
@@ -131,13 +107,10 @@ export function createIDailyMcpServer(env: Env): McpServer {
 	server.registerTool(
 		"get_scrum",
 		{
-			description:
-				"특정 날짜의 스크럼(prev/today) 블록만 반환한다(읽기).",
+			description: "특정 날짜의 스크럼(prev/today) 블록만 반환한다(읽기).",
 			inputSchema: { date: DATE },
 		},
 		async ({ date }) => {
-			const props = requireProps();
-			if (!props) return err("unauthorized");
 			const d = resolveDate(date);
 			const db = drizzle(env.DB);
 			const backend = d1Backend(db, props.accountId);
@@ -165,8 +138,6 @@ export function createIDailyMcpServer(env: Env): McpServer {
 			},
 		},
 		async ({ from, to, side, key }) => {
-			const props = requireProps();
-			if (!props) return err("unauthorized");
 			const db = drizzle(env.DB);
 			const backend = d1Backend(db, props.accountId);
 			const tasks = await backend.queryTasks({
@@ -182,11 +153,14 @@ export function createIDailyMcpServer(env: Env): McpServer {
 	return server;
 }
 
-/** OAuthProvider apiHandler 용 — ctx.props(accountId) 를 MCP authContext 로 전달. */
-export const mcpApiHandler = {
-	async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-		return createMcpHandler(() => createIDailyMcpServer(env), {
-			route: "/mcp",
-		})(request, env, ctx);
-	},
-};
+export async function handleMcpRequest(
+	request: Request,
+	env: Env,
+	ctx: ExecutionContext,
+	props: McpProps,
+): Promise<Response> {
+	return createMcpHandler(() => createIDailyMcpServer(env, props), {
+		route: "/mcp",
+		authContext: { props },
+	})(request, env, ctx);
+}

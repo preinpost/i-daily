@@ -20,3 +20,6 @@ worker-configuration.d.ts
 # pi-subagents runtime artifacts
 .pi-subagents/
 backup-idaily.sql
+
+# Better Auth CLI 전용 더미 DB (스키마 생성용)
+.ba-cli.sqlite

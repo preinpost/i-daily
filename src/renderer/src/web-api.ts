@@ -8,7 +8,7 @@ async function request(
 	path: string,
 	body?: unknown,
 ): Promise<{ status: number; body: any }> {
-	const opt: RequestInit = { method, headers: {} };
+	const opt: RequestInit = { method, headers: {}, credentials: "include" };
 	if (body !== undefined && method !== "GET" && method !== "HEAD") {
 		(opt.headers as Record<string, string>)["content-type"] =
 			"application/json";
@@ -59,21 +59,33 @@ export const webApi: Api = {
 	jira: {
 		status: () => get("/api/jira/status"),
 		connect: async () => {
-			const r = await get("/api/jira/connect");
-			// 인가 URL 이 오면 새 창으로 열어 OAuth 진행. 콜백이 서버에서 토큰을 저장한다.
-			// authorizeUrl 은 서버가 Atlassian 인가 URL 로 생성(신뢰). 호스트 검증으로 open-redirect 방지.
-			if (r && r.ok && r.authorizeUrl && isAtlassianAuthorize(r.authorizeUrl)) {
-				// isAtlassianAuthorize 로 https://auth.atlassian.com 호스트 검증后 open — open-redirect 아님.
-				// pi-lens-ignore: no-open-redirect
-				window.open(r.authorizeUrl, "jira-oauth", "width=600,height=700");
+			// Better Auth Atlassian social — 전체 페이지 리다이렉트.
+			const r = await fetch("/api/auth/sign-in/social", {
+				method: "POST",
+				credentials: "include",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ provider: "atlassian", callbackURL: "/" }),
+			});
+			const j = (await r.json().catch(() => ({}))) as {
+				url?: string;
+				error?: string;
+			};
+			if (j.url && isAtlassianAuthorize(j.url)) {
+				location.href = j.url;
+				return { ok: true, authorizeUrl: j.url };
 			}
-			return r;
+			return { ok: false, error: j.error || `sign-in failed (${r.status})` };
 		},
-		logout: () => post("/api/jira/logout"),
+		logout: async () => {
+			await fetch("/api/auth/sign-out", {
+				method: "POST",
+				credentials: "include",
+			}).catch(() => undefined);
+			return post("/api/jira/logout");
+		},
 		tickets: () => get("/api/jira/tickets"),
 		setDue: (key: string, due: string) =>
 			put("/api/jira/due", { key, due }),
-		// 완료 후보 전이 조회 / 전이 실행.
 		transitions: (key: string) =>
 			get("/api/jira/transitions?key=" + encodeURIComponent(key)),
 		transition: (key: string, transitionId?: string) =>

@@ -6,6 +6,6 @@ import { defineConfig } from "drizzle-kit";
 export default defineConfig({
 	dialect: "sqlite",
 	driver: "d1-http", // CF D1 대상. 로컬 better-sqlite3 도 동일 SQL 로 호환.
-	schema: "./src/shared/schema.ts",
+	schema: ["./src/shared/schema.ts", "./src/auth/schema.ts"],
 	out: "./migrations",
 });

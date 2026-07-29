@@ -514,14 +514,8 @@ export async function jiraTransition(
 }
 
 // ───────────────────────── 로그아웃(=연결 해제) ─────────────────────────
-// 로그인=연결이므로, 해제는 jira_auth + 세션 모두 삭제(완전 로그아웃).
-// sid 는 요청 쿠키에서(app.ts 가 판독해 전달). account_id 의 데이터는 유지(재로그인 시 복귀).
-export async function jiraLogout(
-	backend: Backend,
-	db: DB,
-	sid?: string,
-): Promise<any> {
+// jira_auth 만 삭제. 웹 세션은 Better Auth(/api/auth/sign-out)가 담당.
+export async function jiraLogout(backend: Backend, db: DB): Promise<any> {
 	await clearJiraAuth(db, backend.user);
-	if (sid) await deleteSession(db, sid);
 	return jiraStatus(backend, db);
 }
