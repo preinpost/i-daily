@@ -1,7 +1,7 @@
 // backend.ts — Hono 라우트(journalRoutes)가 저장소에 접근하는 추상 seam.
 // 프로덕션은 D1(d1Backend) 하나지만, 라우트가 이 인터페이스만 의존하므로
 // 테스트가 동일 backend 를 주입해 라우팅 로직을 격리 검증할 수 있다.
-import type { Store, Config, TaskFilter, TaskRow } from "./model.ts";
+import type { Store, Config, TaskFilter, TaskRow, SearchFilter, SearchHit } from "./model.ts";
 
 /**
  * 미로그인(세션 없음) 상태의 센틀넬 유저 키.
@@ -18,6 +18,8 @@ export interface Backend {
 	store: Store;
 	/** 파생 쿼리(에이전트·대시보드). side ∈ prev|today|daily. */
 	queryTasks(filter: TaskFilter): Promise<TaskRow[]>;
+	/** 일지 전문 검색(메모·이슈/협업·태스크). 에이전트용. */
+	searchContent(filter: SearchFilter): Promise<SearchHit[]>;
 	/** 과거 일지에서 학습한 스크럼 스페이스 라벨(자동완성 후보). */
 	listSpaceLabels(): Promise<string[]>;
 	/** user별 config(JSON 한 행) 읽기. */

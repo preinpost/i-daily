@@ -193,6 +193,43 @@ export function createIDailyMcpServer(env: Env, props: McpProps): McpServer {
 	);
 
 	server.registerTool(
+		"search_content",
+		{
+			description:
+				"일지 전문 검색(읽기). 메모·스크럼 이슈/협업·태스크(desc/subs/space)에서 q 부분일치. " +
+				"회의/메모를 찾을 때 get_day 를 날짜마다 반복하지 말고 이 도구를 먼저 써라. " +
+				"응답 hits: date, section, kind(raw|issues|collab|task), snippet.",
+			inputSchema: {
+				q: z.string().min(1).describe("검색어(부분일치)"),
+				from: z.string().optional().describe("시작일 YYYY-MM-DD"),
+				to: z.string().optional().describe("종료일 YYYY-MM-DD"),
+				section: z
+					.string()
+					.optional()
+					.describe("섹션 제목 정확일치 (예: 메모, 데일리 스크럼)"),
+				limit: z
+					.number()
+					.int()
+					.min(1)
+					.max(200)
+					.optional()
+					.describe("최대 히트 수(기본 50)"),
+			},
+		},
+		async ({ q, from, to, section, limit }) => {
+			const backend = backendOf(env, props);
+			const hits = await backend.searchContent({
+				q,
+				from: from || undefined,
+				to: to || undefined,
+				section: section || undefined,
+				limit: limit ?? undefined,
+			});
+			return text({ ok: true, count: hits.length, hits });
+		},
+	);
+
+	server.registerTool(
 		"get_week_window",
 		{
 			description:

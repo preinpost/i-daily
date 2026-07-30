@@ -17,6 +17,8 @@ import {
 	type DocRows,
 	type TaskRow,
 	type TaskFilter,
+	type SearchHit,
+	type SearchFilter,
 	type Shortcut,
 	type Config,
 } from "./model.ts";
@@ -632,6 +634,144 @@ export async function queryTasks(
 	}));
 }
 
+/** 본문 주변 snippet. q 위치를 중심으로 앞뒤 잘라 반환. */
+function snippetAround(body: string, q: string, radius = 80): string {
+	const lower = body.toLowerCase();
+	const iq = q.toLowerCase();
+	const at = lower.indexOf(iq);
+	if (at < 0) return body.slice(0, radius * 2).trim();
+	const start = Math.max(0, at - radius);
+	const end = Math.min(body.length, at + iq.length + radius);
+	let s = body.slice(start, end).replace(/\s+/g, " ").trim();
+	if (start > 0) s = "…" + s;
+	if (end < body.length) s = s + "…";
+	return s;
+}
+
+// 일지 전문 검색: sections(raw body) · blocks(issues/collab) · tasks/list(desc/subs/space).
+// SQLite LIKE 는 대소문자 무관(ASCII). 한글은 그대로 부분일치.
+export async function searchContent(
+	db: DB,
+	user: string,
+	f: SearchFilter,
+): Promise<SearchHit[]> {
+	const q = (f.q || "").trim();
+	if (!q) return [];
+	const limit = Math.min(Math.max(f.limit ?? 50, 1), 200);
+	const pattern = `%${q}%`;
+	const hits: SearchHit[] = [];
+
+	const dateConds = [eq(sections.user, user)];
+	if (f.from) dateConds.push(gte(sections.date, f.from));
+	if (f.to) dateConds.push(lte(sections.date, f.to));
+	if (f.section) dateConds.push(eq(sections.title, f.section));
+
+	const secRows = await db
+		.select({
+			date: sections.date,
+			title: sections.title,
+			kind: sections.kind,
+			body: sections.body,
+		})
+		.from(sections)
+		.where(
+			and(
+				...dateConds,
+				eq(sections.kind, "raw"),
+				like(sections.body, pattern),
+			),
+		)
+		.orderBy(desc(sections.date))
+		.all();
+
+	for (const r of secRows) {
+		hits.push({
+			date: r.date,
+			section: r.title,
+			kind: r.kind,
+			snippet: snippetAround(r.body, q),
+		});
+		if (hits.length >= limit) return hits;
+	}
+
+	const blockConds = [eq(blocks.user, user)];
+	if (f.from) blockConds.push(gte(blocks.date, f.from));
+	if (f.to) blockConds.push(lte(blocks.date, f.to));
+	// section 필터가 있으면 스크럼 외 섹션만 볼 때는 스킵(메모 등).
+	const wantScrum = !f.section || f.section === "데일리 스크럼";
+	if (wantScrum) {
+		const blockRows = await db
+			.select({
+				date: blocks.date,
+				side: blocks.side,
+				issues: blocks.issues,
+				collab: blocks.collab,
+			})
+			.from(blocks)
+			.where(and(...blockConds))
+			.orderBy(desc(blocks.date))
+			.all();
+		for (const r of blockRows) {
+			for (const [kind, text] of [
+				["issues", r.issues],
+				["collab", r.collab],
+			] as const) {
+				if (!text || text === "없음") continue;
+				if (!text.toLowerCase().includes(q.toLowerCase())) continue;
+				hits.push({
+					date: r.date,
+					section: "데일리 스크럼",
+					kind,
+					snippet: snippetAround(text, q),
+				});
+				if (hits.length >= limit) return hits;
+			}
+		}
+	}
+
+	const taskConds = [eq(taskRows.user, user)];
+	if (f.from) taskConds.push(gte(taskRows.date, f.from));
+	if (f.to) taskConds.push(lte(taskRows.date, f.to));
+	const includeTasks =
+		!f.section ||
+		f.section === "데일리 스크럼" ||
+		f.section === "일일 진행 업무";
+	if (includeTasks) {
+		const taskHitRows = await db
+			.select({
+				date: taskRows.date,
+				side: taskRows.side,
+				space: taskRows.space,
+				jkey: taskRows.jkey,
+				descr: taskRows.descr,
+				subsJson: taskRows.subsJson,
+			})
+			.from(taskRows)
+			.where(and(...taskConds))
+			.orderBy(desc(taskRows.date))
+			.all();
+		const qLower = q.toLowerCase();
+		for (const r of taskHitRows) {
+			if (f.section === "데일리 스크럼" && r.side === "daily") continue;
+			if (f.section === "일일 진행 업무" && r.side !== "daily") continue;
+			const subs = parseSubs(r.subsJson);
+			const line = [r.space && `[${r.space}]`, r.jkey, r.descr, ...subs]
+				.filter(Boolean)
+				.join(" ");
+			if (!line.toLowerCase().includes(qLower)) continue;
+			hits.push({
+				date: r.date,
+				section: r.side === "daily" ? "일일 진행 업무" : "데일리 스크럼",
+				kind: "task",
+				snippet: snippetAround(line, q),
+			});
+			if (hits.length >= limit) return hits;
+		}
+	}
+
+	return hits.slice(0, limit);
+}
+
 // 과거 일지에 쓴 스페이스 라벨 — 최근 사용순, 대소문자 무시 중복 제거.
 export async function listSpaceLabels(db: DB, user: string): Promise<string[]> {
 	const rows = await db
@@ -813,6 +953,9 @@ export function d1Backend(db: DB, user: string): Backend {
 		store: d1Store(db, user),
 		async queryTasks(f) {
 			return queryTasks(db, user, f);
+		},
+		async searchContent(f) {
+			return searchContent(db, user, f);
 		},
 		async listSpaceLabels() {
 			return listSpaceLabels(db, user);

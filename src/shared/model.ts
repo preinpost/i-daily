@@ -50,6 +50,22 @@ export type TaskFilter = {
 	key?: string;
 };
 
+/** 일지 전문 검색 히트(메모·이슈/협업·태스크). */
+export type SearchHit = {
+	date: string;
+	section: string;
+	kind: string;
+	snippet: string;
+};
+
+export type SearchFilter = {
+	q: string;
+	from?: string;
+	to?: string;
+	section?: string;
+	limit?: number;
+};
+
 export interface Store {
 	list(): Promise<string[]>;
 	get(date: string): Promise<Doc | null>;

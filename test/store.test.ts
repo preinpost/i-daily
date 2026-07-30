@@ -4,6 +4,7 @@ import { freshDb } from "./d1.ts";
 import {
 	d1Store,
 	queryTasks,
+	searchContent,
 	listSpaceLabels,
 	readJiraAuth,
 	writeJiraAuth,
@@ -42,6 +43,145 @@ test("d1Store 왕복 + 파생 tasks 쿼리 + 유저 격리", async () => {
 	await store.put("2026-07-10", doc); // 재저장 → tasks 중복 없이 재생성
 	expect((await queryTasks(db, "u1", {})).length).toBe(1);
 	expect((await queryTasks(db, "u2", {})).length).toBe(0); // 다른 유저는 안 보임
+});
+
+test("searchContent: 메모 body q 매칭 → date/section/kind/snippet", async () => {
+	const db = await freshDb();
+	const store = d1Store(db, "u1");
+	const md = [
+		"## 데일리 스크럼",
+		"",
+		"**[금일 진행 업무]**",
+		"- 이슈 사항: 없음",
+		"- 협업 및 기타: 없음",
+		"",
+		"## 메모",
+		"",
+		"### 회의 (2026-07-28)",
+		"시급한 업무",
+		"1. MSP 마진 정보 노출",
+		"2. 정액제 청구 및 정산관리",
+	].join("\n");
+	await store.put("2026-07-28", parseDoc(md, "2026-07-28"));
+	await store.put(
+		"2026-07-29",
+		parseDoc(
+			"## 데일리 스크럼\n\n**[금일 진행 업무]**\n- 이슈 사항: 없음\n- 협업 및 기타: 없음\n\n## 메모\n\n unrelated note",
+			"2026-07-29",
+		),
+	);
+
+	const hits = await searchContent(db, "u1", { q: "MSP 마진" });
+	expect(hits.length).toBe(1);
+	expect(hits[0].date).toBe("2026-07-28");
+	expect(hits[0].section).toBe("메모");
+	expect(hits[0].kind).toBe("raw");
+	expect(hits[0].snippet).toContain("MSP 마진");
+});
+
+test("searchContent: 스크럼 이슈/협업 본문 매칭", async () => {
+	const db = await freshDb();
+	const store = d1Store(db, "u1");
+	await store.put(
+		"2026-07-20",
+		parseDoc(
+			[
+				"## 데일리 스크럼",
+				"",
+				"**[금일 진행 업무]**",
+				"- 이슈 사항: 스테이징 CONE Watcher 접속불가",
+				"- 협업 및 기타: 빌링팀과 정액제 논의",
+			].join("\n"),
+			"2026-07-20",
+		),
+	);
+
+	const issueHits = await searchContent(db, "u1", { q: "접속불가" });
+	expect(issueHits.length).toBe(1);
+	expect(issueHits[0].date).toBe("2026-07-20");
+	expect(issueHits[0].kind).toBe("issues");
+	expect(issueHits[0].snippet).toContain("접속불가");
+
+	const collabHits = await searchContent(db, "u1", { q: "정액제" });
+	expect(collabHits.length).toBe(1);
+	expect(collabHits[0].kind).toBe("collab");
+	expect(collabHits[0].snippet).toContain("정액제");
+});
+
+test("searchContent: 태스크 desc/subs/space 매칭", async () => {
+	const db = await freshDb();
+	const store = d1Store(db, "u1");
+	await store.put(
+		"2026-07-22",
+		parseDoc(
+			[
+				"## 데일리 스크럼",
+				"",
+				"**[금일 진행 업무]**",
+				"  + **[CONE Watcher N]**",
+				"    + [IIPQ-10](https://x/IIPQ-10) 가이드 버전 관리 (40%, ~7/31)",
+				"        + MongoDB 교체",
+				"- 이슈 사항: 없음",
+				"- 협업 및 기타: 없음",
+			].join("\n"),
+			"2026-07-22",
+		),
+	);
+
+	const bySpace = await searchContent(db, "u1", { q: "CONE Watcher N" });
+	expect(bySpace.some((h) => h.kind === "task" && h.snippet.includes("CONE Watcher N"))).toBe(
+		true,
+	);
+
+	const byDesc = await searchContent(db, "u1", { q: "가이드 버전" });
+	expect(byDesc.some((h) => h.kind === "task" && h.snippet.includes("가이드 버전"))).toBe(
+		true,
+	);
+
+	const bySub = await searchContent(db, "u1", { q: "MongoDB" });
+	expect(bySub.some((h) => h.kind === "task" && h.snippet.includes("MongoDB"))).toBe(
+		true,
+	);
+});
+
+test("searchContent: from/to·section 필터 + 유저 격리", async () => {
+	const db = await freshDb();
+	const u1 = d1Store(db, "u1");
+	const u2 = d1Store(db, "u2");
+	const dayMd = (body: string) =>
+		[
+			"## 데일리 스크럼",
+			"",
+			"**[금일 진행 업무]**",
+			"- 이슈 사항: 없음",
+			"- 협업 및 기타: 없음",
+			"",
+			"## 메모",
+			"",
+			body,
+		].join("\n");
+	await u1.put("2026-07-10", parseDoc(dayMd("alpha 키워드"), "2026-07-10"));
+	await u1.put("2026-07-20", parseDoc(dayMd("alpha 키워드 최신"), "2026-07-20"));
+	await u2.put(
+		"2026-07-20",
+		parseDoc(dayMd("alpha 키워드 다른유저"), "2026-07-20"),
+	);
+
+	const ranged = await searchContent(db, "u1", {
+		q: "alpha",
+		from: "2026-07-15",
+		to: "2026-07-25",
+	});
+	expect(ranged.map((h) => h.date)).toEqual(["2026-07-20"]);
+
+	const memoOnly = await searchContent(db, "u1", { q: "alpha", section: "메모" });
+	expect(memoOnly.every((h) => h.section === "메모")).toBe(true);
+	expect(memoOnly.length).toBe(2);
+
+	expect((await searchContent(db, "u2", { q: "alpha" })).length).toBe(1);
+	expect((await searchContent(db, "u2", { q: "alpha" }))[0].snippet).toContain(
+		"다른유저",
+	);
 });
 
 test("정규화 왕복: 전체 Doc(subs·이슈/협업·리스트 done·섹션순서) byte-identical", async () => {
