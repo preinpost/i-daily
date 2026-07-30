@@ -202,13 +202,6 @@ export function normCfg(c?: Partial<Config> | null): Config {
 	return {
 		owner: s.owner || "",
 		jiraBase: s.jiraBase || "",
-		reportProvider: s.reportProvider || "",
-		reportModel: s.reportModel || "",
-		reportBaseUrl: s.reportBaseUrl || "",
-		reportPrompt: s.reportPrompt || "",
-		lunchLat: s.lunchLat || "",
-		lunchLng: s.lunchLng || "",
-		lunchRadius: s.lunchRadius || "1000",
 	};
 }
 

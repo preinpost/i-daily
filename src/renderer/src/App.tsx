@@ -5,7 +5,6 @@ import { Tabs, type View } from "./components/Tabs";
 import { TopHeader } from "./components/TopHeader";
 import { DayCard } from "./components/DayCard";
 import { TicketsPane } from "./components/TicketsPane";
-import { LunchPane } from "./components/LunchPane";
 import { ConfigPane } from "./components/ConfigPane";
 import { Login } from "./components/Login";
 import { WeeklyReportPane } from "./components/WeeklyReportPane";
@@ -36,9 +35,7 @@ export function App() {
 	const [view, setView] = useState<View>(() => {
 		const qs = new URLSearchParams(location.search);
 		const v = qs.get("view");
-		return v === "tickets" || v === "lunch" || v === "report" || v === "config"
-			? v
-			: "log";
+		return v === "tickets" || v === "report" || v === "config" ? v : "log";
 	});
 	const [meta, setMeta] = useState<Meta>({
 		today: null,
@@ -283,16 +280,6 @@ export function App() {
 		}
 	}
 
-	function onConfigSaved(cfg: Config, _configured: boolean) {
-		setConfig(cfg);
-		setMeta((m) => ({ ...m, owner: cfg.owner, jiraBase: cfg.jiraBase }));
-		metaRef.current = {
-			...metaRef.current,
-			owner: cfg.owner,
-			jiraBase: cfg.jiraBase,
-		};
-	}
-
 	// boot
 	useEffect(() => {
 		(async () => {
@@ -432,14 +419,8 @@ export function App() {
 			</main>
 
 			<TicketsPane active={view === "tickets"} />
-			<LunchPane active={view === "lunch"} config={config} />
 			<WeeklyReportPane active={view === "report"} />
-			<ConfigPane
-				active={view === "config"}
-				config={config}
-				firstRun={firstRun}
-				onSaved={onConfigSaved}
-			/>
+			<ConfigPane active={view === "config"} firstRun={firstRun} />
 
 			<datalist id="spaceList">
 				{mergeSpaceLabels(spaceHistory, docRef.current).map((s) => (

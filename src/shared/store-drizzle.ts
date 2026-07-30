@@ -35,7 +35,6 @@ import {
 	settings,
 	weeklyReports,
 	jiraAuth,
-	aiAuth,
 	oauthStates,
 	sessions,
 	taskRows,
@@ -398,50 +397,6 @@ export async function writeJiraAuth(
 
 export async function clearJiraAuth(db: DB, user: string): Promise<void> {
 	await db.delete(jiraAuth).where(eq(jiraAuth.user, user));
-}
-
-// ───────────────────────── ai_auth (BYOK LLM 키 암호문, user별 JSON 한 행) ─────────────────────────
-// json = { v:1, keyEnc }. 암호화/복호화는 서버 계층(crypto.ts)이 담당 — 여기선 암호문만 왕복.
-
-/** 저장된 API 키 암호문(base64) 반환. 없으면 null. 평문은 절대 다루지 않는다. */
-export async function readAiAuthEnc(
-	db: DB,
-	user: string,
-): Promise<string | null> {
-	const row = await db
-		.select({ json: aiAuth.json })
-		.from(aiAuth)
-		.where(eq(aiAuth.user, user))
-		.get();
-	if (!row) return null;
-	try {
-		const t = JSON.parse(row.json) as { keyEnc?: string };
-		return t.keyEnc ? String(t.keyEnc) : null;
-	} catch {
-		return null;
-	}
-}
-
-/** API 키 암호문 저장(upsert). keyEnc 는 crypto.encryptSecret 결과. */
-export async function writeAiAuthEnc(
-	db: DB,
-	user: string,
-	keyEnc: string,
-): Promise<void> {
-	const json = JSON.stringify({ v: 1, keyEnc });
-	await db
-		.insert(aiAuth)
-		.values({ user, json })
-		.onConflictDoUpdate({ target: aiAuth.user, set: { json } });
-}
-
-/** 키 등록 여부(암호문 존재). status 응답용 — 평문/암호문 노출 없음. */
-export async function hasAiAuth(db: DB, user: string): Promise<boolean> {
-	return (await readAiAuthEnc(db, user)) !== null;
-}
-
-export async function clearAiAuth(db: DB, user: string): Promise<void> {
-	await db.delete(aiAuth).where(eq(aiAuth.user, user));
 }
 
 // ───────────────────────── oauth_states (OAuth state CSRF, 단기) ─────────────────────────

@@ -278,7 +278,6 @@ export function createIDailyMcpServer(env: Env, props: McpProps): McpServer {
 			const report = await generateReport(backend, {
 				from: f,
 				to: t,
-				useAgent: false,
 			});
 			const rows = await backend.queryTasks({ from: f, to: t });
 			const digest = buildWeeklyDigest(rows, cfg.owner || "", f, t);

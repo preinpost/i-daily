@@ -1,5 +1,5 @@
 // web-api.ts — 브라우저 전용 window.api 구현.
-// fetch 기반 request(일지 CRUD) + 도메인 라우트 호출(jira/lunch/agent) — 모두 동일 오리진 /api/* HTTP.
+// fetch 기반 request(일지 CRUD) + 도메인 라우트 호출(jira/agent) — 모두 동일 오리진 /api/* HTTP.
 import type { Api } from "./types";
 
 // 동일 오리진 /api/* 로 HTTP 호출. Hono(Workers) 서버가 처리.
@@ -26,7 +26,7 @@ async function request(
 	return { status: r.status, body: json };
 }
 
-// 도메인 라우트(/api/jira·lunch·agent) 호출 — 동일 경로 HTTP.
+// 도메인 라우트(/api/jira·agent) 호출 — 동일 경로 HTTP.
 // 컴포넌트가 window.api.jira.tickets() 를 쓰듯, 웹은 GET /api/jira/tickets 를 부른다.
 async function get(path: string): Promise<any> {
 	return (await request("GET", path)).body;
@@ -36,9 +36,6 @@ async function post(path: string, body?: unknown): Promise<any> {
 }
 async function put(path: string, body?: unknown): Promise<any> {
 	return (await request("PUT", path, body)).body;
-}
-async function del(path: string): Promise<any> {
-	return (await request("DELETE", path)).body;
 }
 
 // Atlassian 인가 URL 만 신뢰(window.open open-redirect 방지).
@@ -94,15 +91,5 @@ export const webApi: Api = {
 	me: () => get("/api/me"),
 	agent: {
 		generate: (opts?: unknown) => post("/api/agent/generate", opts),
-		defaultPrompt: () => get("/api/agent/default-prompt"),
-	},
-	ai: {
-		status: () => get("/api/ai/status"),
-		test: (v: unknown) => post("/api/ai/test", v),
-		saveKey: (v: unknown) => put("/api/ai/key", v),
-		clearKey: () => del("/api/ai/key"),
-	},
-	lunch: {
-		search: (opts: unknown) => post("/api/lunch/search", opts),
 	},
 };

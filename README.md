@@ -25,7 +25,6 @@
 ### 📄 주간보고
 
 - 보고 주기(전주 금요일 ~ 금주 목요일)의 업무를 스페이스·티켓 기준으로 집계한다.
-- 결정적 집계 결과를 기본으로 두고, 에이전트(LLM)로 문장을 다듬을 수 있으며 원문 대비 변경점을 diff로 보여준다.
 
 ### ⚙️ 설정
 
@@ -95,9 +94,8 @@ npm run typecheck
 ```text
 src/
   worker/index.ts        Cloudflare Workers 엔트리: env.DB(D1) → Drizzle → d1Backend → Hono. /api/* 처리, 정적은 assets 위임.
-  server/app.ts          Hono 앱: 도메인 라우트(jira/lunch/agent) + 일지 CRUD catch-all(routeWith).
+  server/app.ts          Hono 앱: 도메인 라우트(jira/agent) + 일지 CRUD catch-all(routeWith).
   server/jira.ts         Atlassian OAuth 2.0(3LO) + REST + 로그인(=연결) — /api/jira/callback 에서 /me 로 account_id 를 받아 세션 발급.
-  server/lunch.ts        점심 탭 카카오 로컬 검색(fetch).
   server/agent.ts        주간보고 결정적 집계(Workers는 CLI spawn 불가 → 에이전트 비활성화).
   shared/backend.ts      Backend seam — route()가 DB 드라이버를 추상화한 인터페이스.
   shared/schema.ts       Drizzle 스키마 = 진실의 원천(11테이블 + task_rows 뷰: oauth_states/sessions 포함).
@@ -111,7 +109,7 @@ src/
   renderer/src/          React + TS 렌더러 (App 등, Electron·웹 공유 컴포넌트)
     web-api.ts           브라우저 전용 window.api — fetch 기반 request + 도메인 라우트 호출.
     lib/api.ts           api(method,path,body) 전송 래퍼.
-    components/          Tabs · TopHeader · DayCard · TicketsPane · ConfigPane · LunchPane · WeeklyReportPane 등.
+    components/          Tabs · TopHeader · DayCard · TicketsPane · ConfigPane · WeeklyReportPane 등.
 wrangler.jsonc           Workers 설정: D1 바인딩 + Assets(SPA) + nodejs_compat.
 vite.web.config.ts       웹 SPA 빌드(React + Tailwind). root=src/renderer-web.
 drizzle.config.ts        drizzle-kit 설정(schema → migrations).
@@ -197,14 +195,6 @@ npx wrangler secret put BETTER_AUTH_SECRET   # openssl rand -base64 32
 > 빠지면 SPA fallback 이 인가 요청을 삼켜 앱 화면이 뜨고 OAuth 가 조용히 실패한다.
 > 로컬 dev 는 `vite.web.config.ts` 의 proxy 에도 동일 경로가 필요하다.
 
-### 카카오 REST API 키 (서버 전역 secret)
-
-점심 탭 맛집 검색(카카오 로컬 API)에 쓰는 REST 키도 동일하게 **서버 전역 secret**이다(user 설정 아님). 사무실 좌표(`lunchLat`/`lunchLng`/`lunchRadius`)만 user 설정으로 남는다 — 사무실마다 다를 수 있으므로.
-
-- 로컬 dev: `.dev.vars` 에 `KAKAO_REST_KEY`. 예시는 `.dev.vars.example`.
-- 배포: `wrangler secret put KAKAO_REST_KEY`.
-- 발급: developers.kakao.com/console/my-app → 내 앱 → 플랫폼 **Web** 추가 → 사이트 도메인 등록 후 REST API 키.
-
 ## TODO — 남은 작업
 
 웹 전환은 완료했고, 다음은 정식 사용을 위한 남은 항목들이다.
@@ -212,7 +202,6 @@ npx wrangler secret put BETTER_AUTH_SECRET   # openssl rand -base64 32
 - [x] **Atlassian OAuth 로그인 (= Jira 연결)** — 1클릭 흐름: 연결 버튼 = 로그인. `read:me`로 account_id 를 받아 `sessions` 표(httpOnly `sid` 쿠키)에 저장 → `user` 주입. 미로그인은 `SETUP("setup")` 센텬넬 유저로 OAuth 클라이언트 config 보관, 첫 로그인 즉시 account_id 로 이관. 멀티유저 전환 기반. **와료**(redirect URI 콘솔 등록후 실사용 가능).
 - [x] **Jira OAuth state 저장소** — `server/jira.ts`의 `_pending` (in-memory) 폐지 → `oauth_states` D1 표. Workers 멀티인스턴스에서도 connect/callback 이 다른 isolate 에 떨어져 동작. TTL 5분.
 - [ ] **Jira redirect URI 등록** — Atlassian 개발자 콘솔에 `https://i-daily.<your-subdomain>.workers.dev/api/jira/callback` 등록 필요(코드는 완료, 콘솔 등록만 남음).
-- [ ] **에이전트 CLI 연동** — Workers 는 로컬 프로세스 spawn 불가 → 주간보고 `useAgent` 비활성화(결정적 집계만). 별도 서비스/서버리스 함수로 분리하거나 브라우저 측 에이전트 호출 경로 검토.
 - [ ] **자동업데이트** — 웹은 새로고침이 곧 업데이트. `useAutoUpdate` 훅의 update.* 스텁을 제거하거나 "새로고침" 안내로 교체.
 - [ ] **better-sqlite3 제거** — 현재 테스트 전용 devDep 으로 잔존(빠른 in-memory 테스트). D1 기반 테스트(로컬 wrangler D1)로 전환하면 완전 제거 가능.
 - [ ] **D1 동시성** — better-sqlite3 동기/단일 프로세스. D1 은 자동커밋 + batch. 다중 워커 배포 시 WAL/단일 인스턴스 정책 점검.

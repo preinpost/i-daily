@@ -124,7 +124,6 @@ test("generate_weekly_report: from/to 집계 · thisWeek/nextWeek", async () => 
 	const r = await generateReport(backend, {
 		from: "2026-07-24",
 		to: "2026-07-30",
-		useAgent: false,
 	});
 	expect(r.ok).toBe(true);
 	expect(r.from).toBe("2026-07-24");

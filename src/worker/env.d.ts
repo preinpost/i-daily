@@ -2,8 +2,6 @@
 // wrangler types 는 로컬 .dev.vars 가 있을 때만 string secret 을 Env 에 넣는다.
 // CI(Release) 는 .dev.vars 없이 types 를 재생성하므로, 여기서 전역 Env 에 선언 병합한다.
 interface Env {
-	AI_ENC_KEY: string;
-
 	// Atlassian OAuth 2.0 (3LO) — Better Auth socialProviders.atlassian 공용.
 	JIRA_CLIENT_ID: string;
 	JIRA_CLIENT_SECRET: string;
@@ -14,6 +12,4 @@ interface Env {
 	BETTER_AUTH_URL?: string;
 	/** Better Auth 서명 시크릿(≥32자). */
 	BETTER_AUTH_SECRET: string;
-
-	KAKAO_REST_KEY: string;
 }

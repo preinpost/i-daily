@@ -194,7 +194,7 @@ export default {
 		if (pathname.startsWith("/api/")) {
 			const db = drizzle(env.DB);
 			const user = await resolveDomainUser(env, auth, pub);
-			const app = buildApp(d1Backend(db, user), db, env);
+			const app = buildApp(d1Backend(db, user), db);
 			return app.fetch(pub);
 		}
 

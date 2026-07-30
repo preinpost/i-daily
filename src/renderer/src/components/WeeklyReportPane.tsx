@@ -87,16 +87,13 @@ export function WeeklyReportPane({ active }: { active: boolean }) {
 		setBusy(true);
 		setSelectedKey("");
 		try {
-			const opts: { useAgent: false; from?: string; to?: string } = {
-				useAgent: false,
-			};
+			const opts: { from?: string; to?: string } = {};
 			if (from) opts.from = from;
 			if (to) opts.to = to;
 			const r = await window.api.agent.generate(opts);
 			setRes(r);
 			if (r?.from) setFrom(r.from);
 			if (r?.to) setTo(r.to);
-			if (r?.warn) toast(r.warn);
 		} catch (e) {
 			toast("집계 실패: " + (e instanceof Error ? e.message : String(e)));
 		} finally {
