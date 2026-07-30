@@ -96,6 +96,43 @@ tasks:
     cmds:
       - npm run db:create
 
+  # ── AUTH / OPS (수동 트리거 · 파괴적) ──────────────────────
+  # 세션 무효화 — 코드 수정 배포 후 기존 사용자 강제 재로그인이 필요할 때 사용.
+  # 재로그인 시 account.update.after 훅이 발생해 syncJiraAuthFromAccount 가 실행되어
+  # settings(jiraBase/owner) 가 자동 동기화된다.
+  # 대상: 원격 D1(=운영). 로컬 변형은 :local 접미사 사용.
+  auth:logout-all:
+    desc: "[원격] 전체 사용자 세션 무효화 (DELETE FROM session) · 재로그인 유도"
+    cmds:
+      - npx wrangler d1 execute i-daily --remote --command "DELETE FROM session;"
+
+  auth:logout-all:local:
+    desc: "[로컬] 전체 사용자 세션 무효화 (DELETE FROM session) · 재로그인 유도"
+    cmds:
+      - npx wrangler d1 execute i-daily --local --command "DELETE FROM session;"
+
+  auth:revoke-mcp:
+    desc: "[원격] MCP OAuth 토큰 전체 폐기 (oauth_access_token · oauth_refresh_token)"
+    cmds:
+      - npx wrangler d1 execute i-daily --remote --command "DELETE FROM oauth_access_token; DELETE FROM oauth_refresh_token;"
+
+  auth:revoke-mcp:local:
+    desc: "[로컬] MCP OAuth 토큰 전체 폐기 (oauth_access_token · oauth_refresh_token)"
+    cmds:
+      - npx wrangler d1 execute i-daily --local --command "DELETE FROM oauth_access_token; DELETE FROM oauth_refresh_token;"
+
+  auth:reset:
+    desc: "[원격] 세션 + MCP 토큰 전체 초기화 (logout-all + revoke-mcp)"
+    cmds:
+      - task: auth:logout-all
+      - task: auth:revoke-mcp
+
+  auth:reset:local:
+    desc: "[로컬] 세션 + MCP 토큰 전체 초기화 (logout-all + revoke-mcp)"
+    cmds:
+      - task: auth:logout-all:local
+      - task: auth:revoke-mcp:local
+
   # ── 유틸 ──────────────────────────────────────────────────
   clean:
     desc: 빌드 산출물 삭제 (dist · .wrangler)

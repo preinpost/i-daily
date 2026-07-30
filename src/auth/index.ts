@@ -7,7 +7,12 @@ import { jwt } from "better-auth/plugins";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { betterAuthOptions, ATLASSIAN_EXTRA_SCOPES } from "./options.ts";
 import * as authSchema from "./schema.ts";
-import { writeJiraAuth, migrateConfig } from "../shared/store-drizzle.ts";
+import {
+	writeJiraAuth,
+	migrateConfig,
+	readConfig,
+	writeConfig,
+} from "../shared/store-drizzle.ts";
 import { SETUP_USER } from "../shared/backend.ts";
 
 export type AppAuth = ReturnType<typeof createAuth>;
@@ -132,6 +137,7 @@ export function createAuth(env: Env) {
 type AccountLike = {
 	providerId: string;
 	accountId: string;
+	userId?: string;
 	accessToken?: string | null;
 	refreshToken?: string | null;
 	accessTokenExpiresAt?: Date | null;
@@ -168,7 +174,7 @@ async function resolveAtlassianSite(accessToken: string): Promise<{
 	};
 }
 
-/** Better Auth account 토큰 → 기존 jira_auth(account_id 키) + setup 이관. */
+/** Better Auth account 토큰 → 기존 jira_auth(account_id 키) + setup 이관 + settings 동기화. */
 async function syncJiraAuthFromAccount(env: Env, acc: AccountLike) {
 	const accountId = String(acc.accountId || "").trim();
 	const accessToken = String(acc.accessToken || "").trim();
@@ -186,6 +192,23 @@ async function syncJiraAuthFromAccount(env: Env, acc: AccountLike) {
 		cloudId: site.cloudId,
 		siteUrl: site.siteUrl,
 		siteName: site.siteName,
+	});
+
+	// settings(config) 동기화: jiraBase(필수)는 site.siteUrl, owner는 user 테이블에서 보강.
+	// 누락 시 isConfigured=false → 새로고침마다 "설정을 먼저 등록하세요" 토스트가 뜸.
+	const cur = await readConfig(db, accountId);
+	let owner = cur.owner;
+	if (!owner.trim() && acc.userId) {
+		const u = await db
+			.select({ name: authSchema.user.name })
+			.from(authSchema.user)
+			.where(eq(authSchema.user.id, acc.userId))
+			.get();
+		owner = (u?.name || "").trim();
+	}
+	await writeConfig(db, accountId, {
+		owner: owner || cur.owner,
+		jiraBase: site.siteUrl || cur.jiraBase,
 	});
 }
 
