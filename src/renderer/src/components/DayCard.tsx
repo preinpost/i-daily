@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { SectionList } from "./sections/SectionList";
+import { TeamsImportModal } from "./TeamsImportModal";
 
 export function DayCard({
 	curDate,
@@ -19,6 +21,8 @@ export function DayCard({
 	onCopy: () => void;
 	onCopyMd: () => void;
 }) {
+	const [teamsImportOpen, setTeamsImportOpen] = useState(false);
+
 	return (
 		<section className="mt-5 overflow-hidden rounded-card border border-line bg-panel shadow-card">
 			<div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
@@ -68,6 +72,14 @@ export function DayCard({
 					>
 						📄 마크다운 복사
 					</button>
+					<button
+						type="button"
+						className="btn btn-ghost"
+						title="Teams 데일리 스크럼 텍스트를 붙여넣어 금일 진행 업무를 일일 진행 업무로 가져옵니다"
+						onClick={() => setTeamsImportOpen(true)}
+					>
+						📥 Teams에서 복사
+					</button>
 				</div>
 			</div>
 
@@ -101,6 +113,9 @@ export function DayCard({
 					}
 				/>
 			</div>
+			{teamsImportOpen && (
+				<TeamsImportModal onClose={() => setTeamsImportOpen(false)} />
+			)}
 		</section>
 	);
 }

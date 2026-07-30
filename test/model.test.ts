@@ -13,6 +13,8 @@ import {
 	appendDailyTasks,
 	emptyDoc,
 	dailyItemsOf,
+	parseTeamsPaste,
+	parseTeamsTaskLine,
 } from "../src/shared/model.ts";
 import { kanbanColumns } from "../src/renderer/src/lib/model.ts";
 
@@ -198,6 +200,159 @@ test("kanbanColumns: 마감 임박 순 · 마감 없으면 맨 아래 · 동일 
 	expect(todo.items.map((t: any) => t.key).join(",")).toBe(
 		"AB-10,AB-2,AB-9,AB-3,AB-1",
 	);
+});
+
+// ── Teams 붙여넣기 → 일일 진행 ─────────────────────────
+test("parseTeamsTaskLine: Jira 키만 key, [고객명]은 desc 유지, 진척률", () => {
+	const a = parseTeamsTaskLine(
+		"[OPIT-1534] DB Migration 재검토 (100%)",
+		2026,
+	)!;
+	expect(a.key).toBe("OPIT-1534");
+	expect(a.desc).toBe("DB Migration 재검토");
+	expect(a.progress).toBe(100);
+	const b = parseTeamsTaskLine(
+		"[국가정보자원관리원] 시연 QnA 작성 (100%)",
+		2026,
+	)!;
+	expect(b.key).toBe("");
+	expect(b.desc).toBe("[국가정보자원관리원] 시연 QnA 작성");
+	expect(b.progress).toBe(100);
+});
+
+test("parseTeamsPaste: Teams 평문 — 금일만 항목·이슈·협업(> 하위), 전일 무시", () => {
+	const text = [
+		"[전일 진행 업무]",
+		"업무 계획",
+		"[OPIT-1534] v3.1.2에서 v3.4.0으로 DB Migration 재검토 (100%)",
+		"[국가정보자원관리원] 시연 QnA 작성 (100%)",
+		"이슈 사항: 없음",
+		"협업 및 기타:",
+		"[OPIT-1413] 전일 협업 (70%)",
+		"> 전일 하위",
+		"[금일 진행 업무]",
+		"업무 계획",
+		"[한국수자원공사] 출장 결과 정리 및 공유 (100%)",
+		"[OPIT-1776] Cyborg 조사 (50%)",
+		"이슈 사항: 없음",
+		"협업 및 기타:",
+		"[OPIT-1413][인증>앱]에서[역할] 조회 문제 해결 (70%)",
+		"> 인프라엔지니어링팀 피드백 지연",
+	].join("\n");
+	const r = parseTeamsPaste(text, 2026);
+	expect(r.items.map((it) => [it.key, it.desc, it.progress])).toEqual([
+		["", "[한국수자원공사] 출장 결과 정리 및 공유", 100],
+		["OPIT-1776", "Cyborg 조사", 50],
+	]);
+	expect(r.issues).toBe("");
+	expect(r.collab).toBe(
+		"[OPIT-1413][인증>앱]에서[역할] 조회 문제 해결 (70%)\n\t인프라엔지니어링팀 피드백 지연",
+	);
+});
+
+test("parseTeamsPaste: 헤더 없으면 전체를 금일로, 마크다운 스크럼도 금일만", () => {
+	const flat = parseTeamsPaste(
+		"[OPIT-1] alone (10%)\n이슈 사항: 네트워크\n> 재시도",
+		2026,
+	);
+	expect(flat.items).toEqual([
+		{
+			done: false,
+			key: "OPIT-1",
+			desc: "alone",
+			progress: 10,
+			due: "",
+			subs: [],
+			space: "",
+		},
+	]);
+	expect(flat.issues).toBe("네트워크\n\t재시도");
+
+	const md = parseTeamsPaste(
+		[
+			"**[전일 진행 업무]**",
+			"- 업무 계획",
+			"  + **[backend]**",
+			"    + [OPIT-9](https://x/OPIT-9) yesterday (100%)",
+			"- 이슈 사항: 없음",
+			"- 협업 및 기타: 없음",
+			"",
+			"**[금일 진행 업무]**",
+			"- 업무 계획",
+			"  + **[frontend]**",
+			"    + [OPIT-2](https://x/OPIT-2) today (30%, ~7/17)",
+			"        + sub note",
+			"- 이슈 사항: 없음",
+			"- 협업 및 기타: 리뷰 요청",
+		].join("\n"),
+		2026,
+	);
+	expect(md.items.length).toBe(1);
+	expect(md.items[0].key).toBe("OPIT-2");
+	expect(md.items[0].space).toBe("frontend");
+	expect(md.items[0].progress).toBe(30);
+	expect(md.items[0].due).toBe("2026-07-17");
+	expect(md.items[0].subs).toEqual(["sub note"]);
+	expect(md.collab).toBe("리뷰 요청");
+});
+
+test("parseTeamsPaste: 스페이스 [라벨] + 티켓 아래 평문 줄은 subs", () => {
+	const text = [
+		"[전일 진행 업무]",
+		"업무 계획",
+		"[CONE Watcher N]",
+		"[IIPQ-10] [CONE Watcher N] 가이드(위키) 페이지 버전 관리 (100%, ~7/29)",
+		"AX네이티브테크실 요청사항",
+		"Cloudflare D1 -> MongoDB로 교체",
+		"이슈 사항: 없음",
+		"협업 및 기타",
+		"CONE Watcher N 가이드 관련 회의",
+		"[금일 진행 업무]",
+		"업무 계획",
+		"[CONE Watcher N]",
+		"[IIPQ-10] [CONE Watcher N] 가이드(위키) 페이지 버전 관리(수정 이력) 기능 추가 (90%, ~7/31)",
+		"AX네이티브테크실 요청사항",
+		"Cloudflare D1 -> MongoDB로 교체",
+		"가이드 export/import 기능 추가",
+		"개인정보 처리방침 버전으로 관리할 수 있도록 개발",
+		"가이드 문서 작성 시 publish 개념 도입",
+		"모바일 페이지 대응",
+		"[IIPQ-11] [CONE Watcher N] 위니텍 1,2월 청구서 불러오기 (20%, ~8/5)",
+		"AX네이티브테크실 요청사항",
+		"이노그리드 계정에 청구서 데이터 추가",
+		"이슈 사항: 없음",
+		"협업 및 기타: 없음",
+	].join("\n");
+	const r = parseTeamsPaste(text, 2026);
+	expect(r.items.length).toBe(2);
+	expect(r.items[0].key).toBe("IIPQ-10");
+	expect(r.items[0].desc).toBe(
+		"[CONE Watcher N] 가이드(위키) 페이지 버전 관리(수정 이력) 기능 추가",
+	);
+	expect(r.items[0].progress).toBe(90);
+	expect(r.items[0].due).toBe("2026-07-31");
+	expect(r.items[0].space).toBe("CONE Watcher N");
+	expect(r.items[0].subs).toEqual([
+		"AX네이티브테크실 요청사항",
+		"Cloudflare D1 -> MongoDB로 교체",
+		"가이드 export/import 기능 추가",
+		"개인정보 처리방침 버전으로 관리할 수 있도록 개발",
+		"가이드 문서 작성 시 publish 개념 도입",
+		"모바일 페이지 대응",
+	]);
+	expect(r.items[1].key).toBe("IIPQ-11");
+	expect(r.items[1].desc).toBe(
+		"[CONE Watcher N] 위니텍 1,2월 청구서 불러오기",
+	);
+	expect(r.items[1].progress).toBe(20);
+	expect(r.items[1].due).toBe("2026-08-05");
+	expect(r.items[1].space).toBe("CONE Watcher N");
+	expect(r.items[1].subs).toEqual([
+		"AX네이티브테크실 요청사항",
+		"이노그리드 계정에 청구서 데이터 추가",
+	]);
+	expect(r.issues).toBe("");
+	expect(r.collab).toBe("");
 });
 
 // ── MCP/에이전트용 일일 항목 append ──

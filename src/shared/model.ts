@@ -444,6 +444,259 @@ export function parseList(
 	return items;
 }
 
+// ───────────────────────── Teams 붙여넣기 → 일일 진행 업무 ─────────────────────────
+// Teams 채팅에서 복사한 평문(또는 마크다운 스크럼)을 금일 블록만 추출해
+// 일일 진행 항목 + 이슈/협업으로 변환. 포맷이 어긋나도 느슨하게 회수.
+export type TeamsImport = {
+	items: ListItem[];
+	issues: string;
+	collab: string;
+};
+const JIRA_KEY_RE = /^[A-Z][A-Z0-9]+-\d+$/i;
+
+function normalizeMetaValue(v: string): string {
+	const t = (v || "").trim();
+	return !t || t === "없음" ? "" : t;
+}
+
+function appendMetaLine(cur: string, text: string, isSub: boolean): string {
+	const t = text.trim();
+	if (!t) return cur;
+	const enc = isSub ? "\t" + t : t;
+	return cur ? cur + "\n" + enc : enc;
+}
+
+/** 스크럼 Block → 일일 ListItem[] (space 라벨 유지). */
+export function blockToListItems(b: Block): ListItem[] {
+	const items: ListItem[] = [];
+	for (const sp of b.spaces ?? []) {
+		const space = (sp.label || "").trim();
+		for (const t of sp.tasks ?? []) {
+			if (!(t.key || t.desc)) continue;
+			items.push({
+				done: false,
+				key: (t.key || "").trim(),
+				desc: (t.desc || "").trim(),
+				progress: t.progress ?? "",
+				due: t.due || "",
+				subs: (t.subs || []).slice(),
+				space,
+			});
+		}
+	}
+	return items;
+}
+
+function stripBullet(line: string): string {
+	return line
+		.replace(/^\s*[-*+]\s+/, "")
+		.replace(/^\s*\[[ xX]\]\s+/, "")
+		.trim();
+}
+
+function splitProgressMeta(
+	content: string,
+	year: number,
+): { desc: string; progress: number | ""; due: string } {
+	let desc = content.trim();
+	let progress: number | "" = "";
+	let due = "";
+	const mm = content.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+	if (mm && (/\d+\s*%/.test(mm[2]) || /~\s*\d+\/\d+/.test(mm[2]))) {
+		desc = mm[1].trim();
+		const pm = mm[2].match(/(\d+)\s*%/);
+		if (pm) progress = Number(pm[1]);
+		const dm = mm[2].match(/~\s*(\d+)\/(\d+)/);
+		if (dm)
+			due = `${year}-${String(+dm[1]).padStart(2, "0")}-${String(+dm[2]).padStart(2, "0")}`;
+	}
+	return { desc, progress, due };
+}
+
+/** `[라벨]`만 있고 Jira 키가 아니면 스페이스 헤더. */
+function spaceOnlyLabel(content: string): string | null {
+	const m = content.match(/^\[([^\]]+)\]\s*$/);
+	if (!m) return null;
+	const label = m[1].trim();
+	if (!label || JIRA_KEY_RE.test(label)) return null;
+	return label;
+}
+
+/** 새 태스크로 볼지 — Jira 키로 시작하거나 진척/마감 메타가 있으면. */
+function looksLikeTeamsTask(content: string): boolean {
+	if (/^\[([^\]]+)\]\([^)]*\)/.test(content)) return true; // 마크다운 링크
+	const br = content.match(/^\[([^\]]+)\]/);
+	if (br && JIRA_KEY_RE.test(br[1].trim())) return true;
+	return /\(\s*\d+\s*%/.test(content) || /~\s*\d+\/\d+/.test(content);
+}
+
+/** 한 줄 → 일일 항목. Jira 키(`[OPIT-1]`)만 key로, `[고객명]` 등은 desc에 유지. */
+export function parseTeamsTaskLine(
+	raw: string,
+	year: number,
+	space = "",
+): ListItem | null {
+	let content = stripBullet(raw);
+	if (!content) return null;
+	if (/^(업무\s*계획|이슈\s*사항|협업)/.test(content)) return null;
+	if (/^\*\*\[.+?\]\*\*\s*$/.test(content)) return null; // 스페이스 헤더는 별도
+	if (spaceOnlyLabel(content)) return null;
+
+	let key = "";
+	const link = content.match(/^\[([^\]]+)\]\([^)]*\)\s*(.*)$/);
+	if (link) {
+		key = link[1].trim().toUpperCase();
+		content = link[2];
+	} else {
+		const br = content.match(/^\[([^\]]+)\]\s*(.*)$/);
+		if (br && JIRA_KEY_RE.test(br[1].trim())) {
+			key = br[1].trim().toUpperCase();
+			content = br[2];
+		}
+	}
+	const { desc, progress, due } = splitProgressMeta(content, year);
+	if (!key && !desc) return null;
+	return { done: false, key, desc, progress, due, subs: [], space };
+}
+
+function sectionKind(line: string): "prev" | "today" | null {
+	const t = line.replace(/\*+/g, "").trim();
+	if (/전일\s*진행\s*업무/.test(t)) return "prev";
+	if (/금일\s*진행\s*업무/.test(t)) return "today";
+	return null;
+}
+
+function parseTeamsPlain(body: string, year: number): TeamsImport {
+	const items: ListItem[] = [];
+	let issues = "";
+	let collab = "";
+	let side: "prev" | "today" | "all" | null = null;
+	let mode: "plan" | "issues" | "collab" | null = null;
+	let cur: ListItem | null = null;
+	let curSpace = "";
+
+	const inToday = () => side === "today" || side === "all";
+
+	for (const raw of body.split("\n")) {
+		const line = raw.replace(/\s+$/, "");
+		if (!line.trim()) continue;
+
+		const sk = sectionKind(line);
+		if (sk) {
+			side = sk;
+			mode = null;
+			cur = null;
+			curSpace = "";
+			continue;
+		}
+		if (side === null) side = "all"; // 헤더 없으면 전체를 금일로 취급
+		if (!inToday()) continue;
+
+		const trimmed = line.trim();
+		// 스페이스 그룹 헤더: `**[label]**` 또는 평문 `[label]`만
+		const sm = trimmed.match(/^\+?\s*\*\*\[(.+?)\]\*\*\s*$/);
+		const spaceLabel = sm?.[1]?.trim() || spaceOnlyLabel(stripBullet(trimmed));
+		if (spaceLabel) {
+			curSpace = spaceLabel;
+			cur = null;
+			mode = "plan";
+			continue;
+		}
+
+		const issueM = trimmed.match(/^(?:[-*+]\s*)?이슈\s*사항\s*:?\s*(.*)$/);
+		if (issueM) {
+			mode = "issues";
+			cur = null;
+			issues = normalizeMetaValue(issueM[1]);
+			continue;
+		}
+		const collabM = trimmed.match(/^(?:[-*+]\s*)?협업[^:]*:?\s*(.*)$/);
+		if (collabM) {
+			mode = "collab";
+			cur = null;
+			collab = normalizeMetaValue(collabM[1]);
+			continue;
+		}
+		if (/^(?:[-*+]\s*)?업무\s*계획/.test(trimmed)) {
+			mode = "plan";
+			cur = null;
+			continue;
+		}
+
+		// 하위 줄: "> …" · 들여쓴 "- …" · (태스크 다음) 평문 비-태스크 줄
+		const gt = trimmed.match(/^>\s*(.*)$/);
+		const indentSub = line.match(/^(\s{2,})[-*+]\s+(.*)$/);
+		const plainSub =
+			!gt &&
+			!indentSub &&
+			cur &&
+			mode === "plan" &&
+			!looksLikeTeamsTask(stripBullet(trimmed));
+		if (
+			gt ||
+			(indentSub && (mode === "issues" || mode === "collab" || cur)) ||
+			plainSub
+		) {
+			const subText = (
+				gt ? gt[1] : indentSub ? indentSub[2] : stripBullet(trimmed)
+			).trim();
+			if (!subText) continue;
+			if (mode === "issues") {
+				issues = appendMetaLine(issues, subText, true);
+			} else if (mode === "collab") {
+				collab = appendMetaLine(collab, subText, true);
+			} else if (cur) {
+				(cur.subs ??= []).push(subText);
+			}
+			continue;
+		}
+
+		if (mode === "issues") {
+			issues = appendMetaLine(issues, stripBullet(trimmed), false);
+			continue;
+		}
+		if (mode === "collab") {
+			collab = appendMetaLine(collab, stripBullet(trimmed), false);
+			continue;
+		}
+
+		const it = parseTeamsTaskLine(line, year, curSpace);
+		if (it) {
+			items.push(it);
+			cur = it;
+			mode = "plan";
+		}
+	}
+	return { items, issues, collab };
+}
+
+/**
+ * Teams(또는 마크다운 스크럼) 붙여넣기 → 금일 일일 진행 + 이슈/협업.
+ * 1) 마크다운 `**[금일…]**` 이면 parseScrum 경로
+ * 2) 아니면 Teams 평문 경로
+ * 3) 금일 헤더만 있고 본문이 비면 빈 결과
+ */
+export function parseTeamsPaste(
+	text: string,
+	year = new Date().getFullYear(),
+): TeamsImport {
+	const body = (text || "").replace(/^\uFEFF/, "").trim();
+	if (!body) return { items: [], issues: "", collab: "" };
+
+	// 마크다운 스크럼이면 기존 파서로 (전일 무시, 금일만)
+	if (/\*\*\[\s*금일/.test(body) || /\*\*\[\s*전일/.test(body)) {
+		const s = parseScrum(body, year);
+		const items = blockToListItems(s.today);
+		const issues = normalizeMetaValue(s.today.issues);
+		const collab = normalizeMetaValue(s.today.collab);
+		if (items.length || issues || collab) {
+			return { items, issues, collab };
+		}
+	}
+
+	return parseTeamsPlain(body, year);
+}
+
 // ───────────────────────── 데일리 스크럼 파서 (마크다운 → 구조) ─────────────────────────
 export function parseTask(content: string, year: number): Task {
 	let key = "",
