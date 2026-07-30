@@ -229,23 +229,19 @@
     color: var(--ink-2);
     white-space: nowrap;
   }
-  .metric-progress-row input {
-    width: 3.25em;
-    min-width: 52px;
-    padding: 3px 4px;
+  .metric-progress-row .metric-progress-input {
+    box-sizing: content-box;
+    width: 3ch;
+    min-width: 3ch;
+    max-width: none;
+    flex: none;
+    padding: 3px 6px;
     text-align: right;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     border-radius: 5px;
     overflow: visible;
     text-overflow: clip;
-    /* 스피너가 세 자리(100)를 가리지 않도록 */
-    appearance: textfield;
-  }
-  .metric-progress-row input::-webkit-outer-spin-button,
-  .metric-progress-row input::-webkit-inner-spin-button {
-    appearance: none;
-    margin: 0;
   }
   .metric-prev {
     font-size: 12px;
@@ -815,4 +811,18 @@
 }
 .md-editor .tableWrapper {
   overflow-x: auto;
+}
+
+/* 진척 입력 — @layer 밖에서도 전역 input ellipsis/min-width:0 을 이긴다 */
+input.metric-progress-input {
+  width: 4ch !important;
+  min-width: 4ch !important;
+  max-width: none !important;
+  flex: 0 0 auto !important;
+  box-sizing: content-box;
+  padding: 3px 6px;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

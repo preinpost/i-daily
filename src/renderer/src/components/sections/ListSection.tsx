@@ -750,14 +750,21 @@ function ListItemRow({
 					<span className="metric-progress-row">
 						진척
 						<input
-							type="number"
-							min={0}
-							max={100}
+							className="metric-progress-input"
+							type="text"
+							inputMode="numeric"
+							pattern="[0-9]*"
+							maxLength={3}
 							placeholder="0"
-							value={it.progress === 0 ? "0" : it.progress || ""}
+							value={it.progress === 0 ? "0" : it.progress ?? ""}
 							onChange={(e) => {
-								it.progress =
-									e.target.value === "" ? "" : Number(e.target.value);
+								const raw = e.target.value.replace(/\D/g, "").slice(0, 3);
+								if (raw === "") {
+									it.progress = "";
+								} else {
+									const n = Math.min(100, Number(raw));
+									it.progress = Number.isNaN(n) ? "" : n;
+								}
 								commit();
 							}}
 						/>
