@@ -173,13 +173,15 @@ export function WeeklyReportPane({ active }: { active: boolean }) {
 	return (
 		<div
 			hidden={!active}
-			className="fixed inset-x-0 bottom-0 top-tabh z-50 flex bg-bg"
+			className="fixed inset-x-0 bottom-0 top-[var(--chrome-offset,48px)] z-40 flex bg-bg"
 		>
 			{/* 왼쪽: 기존 집계·편집 */}
 			<div className="min-w-0 flex-1 overflow-y-auto">
-				<div className="mx-auto flex w-full max-w-[720px] flex-col gap-4 px-5 pb-16 pt-7">
-					<h2 className="m-0 text-xl font-extrabold text-ink">📋 주간업무보고</h2>
-					<p className="tint-accent m-0 rounded-[10px] px-3.5 py-2.5 text-[13px] text-ink">
+				<div className="mx-auto flex w-full max-w-[720px] flex-col gap-3.5 px-5 pb-16 pt-5">
+					<h2 className="m-0 text-[18px] font-bold tracking-[-0.02em] text-ink">
+						주간업무보고
+					</h2>
+					<p className="tint-accent m-0 rounded-[6px] px-3.5 py-3 text-[13px] leading-[1.55] text-accent-text">
 						전주 금요일 ~ 금주 목요일 사이의 진행 업무를 스페이스별로 뭉쳐 Teams
 						붙여넣기용으로 만듭니다.
 						<br />

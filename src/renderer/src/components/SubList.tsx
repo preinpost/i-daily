@@ -16,9 +16,11 @@ export function SubList({ subs }: { subs: string[] }) {
 		prevLen.current = subs.length;
 	});
 
+	if (!subs.length) return null;
+
 	return (
-		<div ref={ref} className="w-full basis-full">
-			{subs.map((val, i) => (
+		<div ref={ref} className="w-full pl-6">
+			{subs.map((_val, i) => (
 				<SubRow key={i} subs={subs} index={i} commit={commit} />
 			))}
 		</div>
@@ -39,7 +41,7 @@ function SubRow({
 	return (
 		<div
 			className={
-				"sub-bullet drag-row mt-1 ml-2 flex items-center gap-1.5 rounded " +
+				"sub-bullet drag-row flex items-center gap-1.5 py-1 " +
 				(over ? "dragover" : "")
 			}
 			{...rowProps}
@@ -52,7 +54,7 @@ function SubRow({
 				⠿
 			</span>
 			<input
-				className="subin flex-1 text-[13px]"
+				className="subin flex-1 border-0 bg-transparent px-0 py-0 text-[13px] text-ink-2"
 				value={subs[index] || ""}
 				placeholder="하위 항목"
 				onChange={(e) => {

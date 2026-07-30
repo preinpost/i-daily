@@ -226,44 +226,47 @@ export function TicketsPane({ active }: { active: boolean }) {
 	return (
 		<div
 			hidden={!active}
-			className="fixed inset-x-0 bottom-0 top-tabh z-50 flex flex-col overflow-y-auto bg-bg"
+			className="fixed inset-x-0 bottom-0 top-[var(--chrome-offset,48px)] z-40 flex flex-col overflow-y-auto bg-bg"
 		>
-			<div className="mx-auto w-full max-w-[1200px] px-5 pb-12 pt-5">
-				<div className="mb-3.5 flex items-center gap-3">
-					<h2 className="m-0 text-xl font-extrabold text-ink">
-						{showHidden ? "🙈 숨긴 업무" : "🎫 내 티켓"}
+			<div className="mx-auto w-full max-w-[1120px] px-5 pb-12 pt-5">
+				<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+					<h2 className="m-0 inline-flex items-baseline gap-2 text-[18px] font-bold tracking-[-0.02em] text-ink">
+						{showHidden ? "숨긴 업무" : "내 티켓"}
+						{state.site && (
+							<span className="text-[13px] font-medium text-ink-2">
+								@ {state.site}
+							</span>
+						)}
 					</h2>
-					<span className="text-xs text-ink-2">
-						{state.site ? "@ " + state.site : ""}
-					</span>
-					<div className="flex-1" />
-					<button
-						type="button"
-						className={
-							"btn btn-ghost" + (showHidden ? " text-accent" : "")
-						}
-						title="숨긴 업무 보기"
-						onClick={() => setShowHidden((v) => !v)}
-					>
-						{showHidden
-							? "← 티켓으로"
-							: "숨긴 업무" + (hidden.size ? ` (${hidden.size})` : "")}
-					</button>
-					<button
-						type="button"
-						className="btn btn-ghost"
-						title="새로고침 (⌘R / Ctrl+R / F5)"
-						onClick={() => load(true)}
-					>
-						↻ 새로고침
-					</button>
+					<div className="flex flex-wrap items-center gap-2">
+						<button
+							type="button"
+							className={
+								"btn btn-ghost" + (showHidden ? " text-accent-text" : "")
+							}
+							title="숨긴 업무 보기"
+							onClick={() => setShowHidden((v) => !v)}
+						>
+							{showHidden
+								? "← 티켓으로"
+								: "숨긴 업무" + (hidden.size ? ` (${hidden.size})` : "")}
+						</button>
+						<button
+							type="button"
+							className="btn btn-ghost"
+							title="새로고침 (⌘R / Ctrl+R / F5)"
+							onClick={() => load(true)}
+						>
+							새로고침
+						</button>
+					</div>
 				</div>
 
 				{state.loading ? (
 					<p className="px-0.5 py-3 text-[13px] text-ink-2">불러오는 중…</p>
 				) : state.error ? (
 					<p className="px-0.5 py-3 text-[13px] text-danger">
-						불러오기 실패: {state.error} — ⚙️ 설정에서 Jira 연결을 확인하세요.
+						불러오기 실패: {state.error} — 설정에서 Jira 연결을 확인하세요.
 					</p>
 				) : !visibleTickets.length ? (
 					<p className="px-0.5 py-3 text-[13px] text-ink-2">
@@ -272,26 +275,17 @@ export function TicketsPane({ active }: { active: boolean }) {
 							: "내게 할당된 티켓이 없습니다."}
 					</p>
 				) : (
-					<div className="grid grid-cols-3 items-start gap-3.5">
+					<div className="grid grid-cols-1 items-start gap-3.5 md:grid-cols-3">
 						{kanbanColumns(visibleTickets).map((col) => (
 							<div
 								key={col.cat}
-								className="flex min-w-0 flex-col rounded-xl border border-line bg-panel-2 p-2.5"
+								className="flex min-w-0 flex-col rounded-card border border-line bg-panel-2 p-2.5"
 							>
-								<div className="mb-2.5 flex items-center gap-2 border-b border-line px-1 pb-2.5">
-									<span
-										className={
-											"text-[12px] font-extrabold uppercase tracking-[0.04em] " +
-											(col.cat === "indeterminate"
-												? "text-accent"
-												: col.cat === "done"
-													? "text-ink-2"
-													: "text-ink")
-										}
-									>
+								<div className="mb-2.5 flex items-center justify-between gap-2 px-1.5 pb-2.5">
+									<span className="text-[13.5px] font-bold text-ink">
 										{col.title}
 									</span>
-									<span className="rounded-full border border-line bg-panel px-2 py-px text-[11px] font-bold text-ink-2">
+									<span className="inline-grid h-5 min-w-[22px] place-items-center rounded-full border border-line bg-panel px-1.5 text-[11.5px] font-bold tabular-nums text-ink-2">
 										{col.items.length}
 									</span>
 								</div>
@@ -306,7 +300,10 @@ export function TicketsPane({ active }: { active: boolean }) {
 												key={t.key}
 												role="link"
 												tabIndex={0}
-												className="flex cursor-context-menu flex-col gap-[5px] rounded-[9px] border border-line bg-panel p-[10px_11px] text-ink hover:border-accent"
+												className={
+													"flex cursor-context-menu flex-col gap-1.5 rounded-[6px] border border-line bg-panel px-3 py-2.5 text-ink shadow-card transition-[border-color,box-shadow] duration-150 hover:border-[color-mix(in_oklch,var(--accent)_28%,var(--line))] hover:shadow-panel " +
+													(col.cat === "done" ? "opacity-90" : "")
+												}
 												onClick={() => {
 													if (t.url) window.open(t.url, "_blank", "noopener");
 												}}
@@ -339,7 +336,7 @@ export function TicketsPane({ active }: { active: boolean }) {
 																		onClick: () => addToDaily(t),
 																	},
 																	{
-																		label: "🔀 상태 변경",
+																		label: "상태 변경",
 																		children: loadTransitions(t),
 																	},
 																	{ sep: true },
@@ -351,20 +348,25 @@ export function TicketsPane({ active }: { active: boolean }) {
 													);
 												}}
 											>
-												<div className="flex items-baseline justify-between gap-2">
-													<span className="whitespace-nowrap font-mono text-[12px] font-bold text-accent">
+												<div className="flex items-center justify-between gap-2">
+													<span className="whitespace-nowrap font-mono text-[12.5px] font-bold text-accent-text">
 														{t.key}
 													</span>
 													{t.due && (
-														<span className="whitespace-nowrap text-[11px] text-ink-2">
+														<span className="whitespace-nowrap text-[11.5px] font-semibold tabular-nums text-ink-2">
 															~{t.due}
 														</span>
 													)}
 												</div>
-												<div className="clamp-3 text-[13px] leading-[1.35] text-ink">
+												<div
+													className={
+														"clamp-3 text-[13px] font-semibold leading-[1.45] " +
+														(col.cat === "done" ? "text-ink-2" : "text-ink")
+													}
+												>
 													{t.summary}
 												</div>
-												<div className="truncate text-[11px] text-ink-2">
+												<div className="truncate text-[11.5px] font-medium text-ink-2">
 													{[t.status, t.type, t.priority]
 														.filter(Boolean)
 														.join(" · ")}

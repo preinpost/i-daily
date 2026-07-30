@@ -44,11 +44,11 @@ export function Shortcuts() {
   }
 
   return (
-    <div className="mx-auto flex max-w-[1080px] flex-wrap items-center gap-1 px-[18px] pb-1.5">
+    <div className="mx-auto flex max-w-[1120px] flex-wrap items-center gap-2 px-5 pb-2.5 pt-3">
       {items.map((s, i) => (
-        <span key={i} className="group inline-flex items-center rounded-full border border-line bg-panel-2 text-xs">
+        <span key={i} className="group inline-flex items-center rounded-full border border-line bg-panel text-[12.5px] font-semibold shadow-card">
           <a
-            className="max-w-[220px] cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap py-0.5 pl-[9px] pr-[5px] text-ink no-underline"
+            className="max-w-[220px] cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap py-1.5 pl-[11px] pr-[5px] text-ink no-underline"
             title={s.url}
             onClick={() => s.url && window.open(s.url, "_blank", "noopener")}
           >
@@ -101,7 +101,7 @@ export function Shortcuts() {
       ) : (
         <button
           type="button"
-          className="cursor-pointer rounded-full border-0 bg-transparent px-[11px] py-1 text-[12.5px] text-ink-2"
+          className="cursor-pointer rounded-full border border-line bg-accent-soft px-[11px] py-1.5 text-[12.5px] font-semibold text-accent-text"
           onClick={() => setAdding(true)}
         >
           + 바로가기

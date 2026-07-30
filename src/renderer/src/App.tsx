@@ -60,10 +60,31 @@ export function App() {
 	const teamsHtmlRef = useRef("");
 	/** 마지막으로 서버에서 받아 적용한 Doc 지문 — MCP 등 외부 쓰기 감지용. */
 	const serverFpRef = useRef("");
+	/** 탭+헤더 크롬 높이 → 오버레이 pane top 오프셋 */
+	const chromeRef = useRef<HTMLDivElement>(null);
 
 	// 핸들러가 항상 최신 값을 보도록 매 렌더 동기화
 	curDateRef.current = curDate;
 	metaRef.current = meta;
+
+	// 상단 크롬(탭·헤더) 높이를 CSS 변수로 동기화 — 탭 전환 시 레이아웃 점프 방지
+	useEffect(() => {
+		const el = chromeRef.current;
+		if (!el) return;
+		const sync = () => {
+			document.documentElement.style.setProperty(
+				"--chrome-offset",
+				`${el.offsetHeight}px`,
+			);
+		};
+		sync();
+		const ro = new ResizeObserver(sync);
+		ro.observe(el);
+		return () => {
+			ro.disconnect();
+			document.documentElement.style.removeProperty("--chrome-offset");
+		};
+	}, [ready, authed]);
 
 	const bump = () => setVer((v) => v + 1);
 	const setDot = (cls: string, note?: string) =>
@@ -386,7 +407,7 @@ export function App() {
 
 	if (authed === null || !ready || !docRef.current) {
 		return (
-			<div className="mx-auto max-w-[1080px] px-[18px] py-10 text-ink-2">
+			<div className="mx-auto max-w-[980px] px-5 py-10 text-ink-2">
 				불러오는 중…
 			</div>
 		);
@@ -396,16 +417,18 @@ export function App() {
 		<EditorContext.Provider
 			value={{ doc: docRef.current, meta, config, commit, rerender: bump }}
 		>
-			<Tabs view={view} onView={setView} />
-			<TopHeader
-				curDate={curDate}
-				meta={meta}
-				saveCls={saveState.cls}
-				saveNote={saveState.note}
-				onSave={saveNow}
-				onRevert={revert}
-			/>
-			<main className="mx-auto max-w-[1080px] px-[18px]">
+			<div ref={chromeRef} className="app-chrome sticky top-0 z-[100]">
+				<Tabs view={view} onView={setView} />
+				<TopHeader
+					curDate={curDate}
+					meta={meta}
+					saveCls={saveState.cls}
+					saveNote={saveState.note}
+					onSave={saveNow}
+					onRevert={revert}
+				/>
+			</div>
+			<main className="mx-auto max-w-[980px] px-5 pb-12" hidden={view !== "log"}>
 				<DayCard
 					curDate={curDate}
 					today={meta.today}

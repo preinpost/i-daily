@@ -6,29 +6,31 @@ import { confirmReset } from "../../lib/ui";
 import { emptyBlock, fmtMeta, parseMetaLines } from "../../../../shared/model";
 import type { Block, Task } from "../../types";
 
-// 전일 블록의 이슈·협업 읽기 전용 렌더 — 2레벨(메인 + ↳ 하위) 구조.
+// 전일 블록의 이슈·협업 읽기 전용 렌더 — 일일 하위 항목과 같은 트리 라인.
 function MetaRead({ label, value }: { label: string; value: string }) {
 	const items = parseMetaLines(value);
 	if (!items.length) return null;
 	return (
 		<div className="px-2 py-1 text-[12px] text-ink-2">
 			<div className="mb-0.5 font-bold tracking-[0.02em]">{label}</div>
-			<div className="grid gap-[2px] pl-1">
+			<div className="grid gap-1 pl-0.5">
 				{items.map((it, i) => (
 					<div key={i}>
-						<div className="flex items-baseline gap-1.5 leading-[1.5] text-ink">
-							<span className="flex-none opacity-60">+</span>
-							<span className="min-w-0 break-words">{it.text}</span>
+						<div className="leading-[1.5] font-semibold text-ink">
+							{it.text}
 						</div>
-						{it.subs.map((s, si) => (
-							<div
-								key={si}
-								className="flex items-baseline gap-1.5 pl-3 leading-[1.5]"
-							>
-								<span className="flex-none opacity-60">↳</span>
-								<span className="min-w-0 break-words">{s}</span>
+						{it.subs.length > 0 && (
+							<div className="pl-1">
+								{it.subs.map((s, si) => (
+									<div
+										key={si}
+										className="sub-bullet py-0.5 leading-[1.5] text-ink-2"
+									>
+										{s}
+									</div>
+								))}
 							</div>
-						))}
+						)}
 					</div>
 				))}
 			</div>
@@ -75,19 +77,17 @@ export function ScrumSection({
 	}
 
 	return (
-		<div className="mb-[22px]">
-			<h3 className="mb-2.5 mt-0 flex items-center gap-[7px] text-[15px] tracking-[-0.2px]">
+		<div className="mb-[18px]">
+			<h3 className="mb-2.5 mt-0 flex items-center gap-2 text-[15px] font-bold tracking-[-0.02em]">
 				<span>{title}</span>
-				<span className="rounded-full bg-chip px-2 py-0.5 text-[11px] text-ink-2">
-					버튼 전용 · 입력 없음
-				</span>
+				<span className="hint-pill">버튼 전용 · 입력 없음</span>
 			</h3>
 
-			<div className="rules mb-3.5 rounded-[10px] border border-line bg-panel-2 p-[10px_12px] text-[12.5px] text-ink-2">
+			<div className="rules mb-3.5 rounded-[6px] border border-line bg-panel-2 px-3.5 py-3 text-[12.5px] text-ink-2">
 				<details>
 					<summary>
-						회사 규정 체크리스트{" "}
-						<span className="font-normal text-ink-2">(펼치기)</span>
+						<span>회사 규정 체크리스트 (펼치기)</span>
+						<span aria-hidden="true">▾</span>
 					</summary>
 					<ol className="mt-2 grid list-decimal gap-[3px] pl-[18px]">
 						<li>
@@ -116,52 +116,53 @@ export function ScrumSection({
 				</details>
 			</div>
 
-			<div className="overflow-hidden rounded-xl border border-line bg-panel-2">
+			<div className="grid gap-2.5">
 				{/* ── 1단계: 전일 진행 업무 ← 어제 일일 ── */}
-				<div className="border-b border-line p-[12px_14px]">
-					<div className="flex flex-wrap items-center gap-2">
-						<StepBadge n={1} />
-						<div className="min-w-0">
-							<div className="text-[13.5px] font-[650] leading-tight">
+				<div className="rounded-card border border-line bg-panel p-4 shadow-card">
+					<div className="flex flex-wrap items-center gap-3">
+						<span className="step-badge">1</span>
+						<div className="min-w-0 flex-1">
+							<div className="text-[14.5px] font-bold leading-tight">
 								전일 진행 업무
 							</div>
-							<div className="text-xs text-ink-2">
+							<div className="mt-1 text-[13px] text-ink-2">
 								직전 근무일의 일일 진행 업무를 가져옵니다
 							</div>
 						</div>
-						<div className="flex-1" />
-						{prevCount > 0 && (
+						<div className="flex flex-none flex-wrap items-center justify-end gap-1.5">
+							{prevCount > 0 && (
+								<button
+									type="button"
+									className="btn btn-ghost"
+									title="가져온 전일 진행 업무를 비웁니다"
+									onClick={() => {
+										if (!confirmReset("전일 진행 업무")) return;
+										scrum.prev = emptyBlock();
+										commit();
+										toast("전일 진행 업무 초기화");
+									}}
+								>
+									비우기
+								</button>
+							)}
 							<button
 								type="button"
-								className="btn btn-tiny btn-ghost"
-								title="가져온 전일 진행 업무를 비웁니다"
-								onClick={() => {
-									if (!confirmReset("전일 진행 업무")) return;
-									scrum.prev = emptyBlock();
-									commit();
-									toast("전일 진행 업무 초기화");
-								}}
+								className="btn btn-ghost"
+								title="직전 근무일의 '일일 진행 업무'를 전일 진행 업무로 가져옵니다"
+								onClick={importPrev}
 							>
-								비우기
+								어제 일지 가져오기
 							</button>
-						)}
-						<button
-							type="button"
-							className="btn btn-tiny btn-ghost"
-							title="직전 근무일의 '일일 진행 업무'를 전일 진행 업무로 가져옵니다"
-							onClick={importPrev}
-						>
-							↧ 어제 일일 가져오기
-						</button>
+						</div>
 					</div>
 
 					{!prevCount ? (
-						<div className="mt-2.5 rounded-[10px] border border-dashed border-line p-3.5 text-center text-xs text-ink-2">
+						<div className="mt-2.5 rounded-[6px] border border-dashed border-line-strong bg-panel-2 p-4 text-center text-[13px] text-ink-2">
 							아직 가져온 전일 기록이 없어요 —{" "}
-							<b className="text-ink">↧ 어제 일일 가져오기</b>를 누르세요
+							<b className="text-ink">어제 일지 가져오기</b>를 누르세요
 						</div>
 					) : (
-						<div className="mt-2.5 rounded-[10px] border border-line bg-panel p-2">
+						<div className="mt-2.5 rounded-[6px] border border-line bg-panel-2 p-2">
 							<div className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-bold text-ink-2">
 								<span>{prevCount}건</span>
 								<span className="font-normal opacity-75">
@@ -174,46 +175,37 @@ export function ScrumSection({
 				</div>
 
 				{/* ── 2단계: 금일 진행 업무 ← 오늘 일일 → Teams 텍스트 ── */}
-				<div className="p-[12px_14px]">
-					<div className="flex flex-wrap items-center gap-2">
-						<StepBadge n={2} />
-						<div className="min-w-0">
-							<div className="text-[13.5px] font-[650] leading-tight">
-								금일 진행 업무
+				<div className="rounded-card border border-line bg-panel p-4 shadow-card">
+					<div className="flex flex-wrap items-center gap-3">
+						<span className="step-badge">2</span>
+						<div className="min-w-0 flex-1">
+							<div className="text-[14.5px] font-bold leading-tight">
+								금일 진행 업무 · 생성
 							</div>
-							<div className="text-xs text-ink-2">
+							<div className="mt-1 text-[13px] text-ink-2">
 								오늘 일일 진행 업무{" "}
-								<b className={dailyCount ? "text-accent" : ""}>
+								<b className={dailyCount ? "text-accent-text" : ""}>
 									{dailyCount}건
 								</b>
-								+ 이슈·협업 → 아래 Teams 텍스트로 생성
+								+ 이슈·협업 → Teams 텍스트로 생성
 							</div>
 						</div>
-						<div className="flex-1" />
 						<button
 							type="button"
-							className="btn btn-primary"
+							className="btn btn-primary flex-none"
 							title="오늘 일일 진행 업무로 금일 진행 업무를 만들고 Teams 붙여넣기 텍스트를 즉시 생성합니다"
 							onClick={onGenerate}
 						>
-							📋 데일리 스크럼 생성
+							데일리 스크럼 생성
 						</button>
 					</div>
-					<p className="mb-0 mt-2 px-1 text-[11.5px] leading-[1.5] text-ink-2">
+					<p className="mb-0 mt-2 text-[12px] leading-[1.5] text-ink-2">
 						이슈 사항·협업 및 기타는 <b>일일 진행 업무</b> 섹션 아래에서
 						입력하면 생성 시 함께 반영됩니다.
 					</p>
 				</div>
 			</div>
 		</div>
-	);
-}
-
-function StepBadge({ n }: { n: number }) {
-	return (
-		<span className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--accent)_18%,var(--chip))] text-[12.5px] font-bold tabular-nums text-accent">
-			{n}
-		</span>
 	);
 }
 

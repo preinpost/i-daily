@@ -293,19 +293,21 @@ export function ConfigPane({
 	return (
 		<div
 			hidden={!active}
-			className="fixed inset-x-0 bottom-0 top-tabh z-50 flex flex-col overflow-y-auto bg-bg"
+			className="fixed inset-x-0 bottom-0 top-[var(--chrome-offset,48px)] z-40 flex flex-col overflow-y-auto bg-bg"
 		>
-			<div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-5 pb-12 pt-7">
-				<h2 className="m-0 text-xl font-extrabold text-ink">⚙️ 설정</h2>
+			<div className="mx-auto flex w-full max-w-[640px] flex-col gap-3.5 px-5 pb-12 pt-5">
+				<h2 className="m-0 text-[18px] font-bold tracking-[-0.02em] text-ink">
+					설정
+				</h2>
 				{firstRun && (
-					<p className="tint-accent m-0 rounded-[10px] px-3.5 py-2.5 text-[13px] text-ink">
+					<p className="tint-accent m-0 rounded-[6px] px-3.5 py-3 text-[13px] leading-[1.55] text-accent-text">
 						처음 실행이에요. 아래 <b>Jira 연동</b>으로 로그인하면 이름·사이트
 						주소가 자동으로 채워지고 업무일지가 활성화됩니다.
 					</p>
 				)}
 
-				<h3 className="mt-4 border-t border-line pt-4 text-[15px] font-extrabold text-ink">
-					🎫 Jira 연동
+				<h3 className="mt-4 border-t border-line pt-4 text-[15px] font-bold text-ink">
+					Jira 연동
 				</h3>
 
 				<div className="mt-1 flex items-center gap-3">

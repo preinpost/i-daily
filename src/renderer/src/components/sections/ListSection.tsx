@@ -12,7 +12,7 @@ import {
 	renameListSpace,
 } from "../../lib/model";
 import { autoGrow, confirmReset } from "../../lib/ui";
-import { useListItemDrop, useSpaceDrop } from "../../lib/useDnd";
+import { useListItemDrop, useSpaceDrop, useSubReorder } from "../../lib/useDnd";
 import { DragHandle } from "../DragHandle";
 import { GoButton } from "../GoButton";
 import { SubList } from "../SubList";
@@ -118,52 +118,54 @@ export function ListSection({
 	}
 
 	return (
-		<div className="mb-[22px]">
-			<h3 className="mb-2.5 mt-0 flex items-center gap-[7px] text-[15px] tracking-[-0.2px]">
-				<span>{sec.title || "일일 진행 업무"}</span>
-				<div className="flex-1" />
-				<button
-					type="button"
-					className="btn btn-tiny btn-ghost"
-					title="직전 근무일의 '일일 진행 업무'에서 없는 항목만 가져옵니다 (진척·마감 유지, 완료 체크는 해제)"
-					onClick={importYesterday}
-				>
-					↧ 어제 일일
-				</button>
-				<button
-					type="button"
-					className="btn btn-tiny btn-ghost"
-					title="이 섹션 항목을 비웁니다 (저장 전이면 새로고침으로 복구)"
-					onClick={() => {
-						const label = sec.title || "일일 진행 업무";
-						if (!listHasContent(sec)) return toast("이미 비어 있어요");
-						if (!confirmReset(label)) return;
-						sec.items = [];
-						commit();
-						toast(label + " 초기화");
-					}}
-				>
-					초기화
-				</button>
-				<button
-					type="button"
-					className="btn btn-tiny btn-ghost"
-					title="데일리 스크럼처럼 이 섹션에도 스페이스(어느 업무 소속인지)를 만듭니다"
-					onClick={() => setGroupModalOpen(true)}
-				>
-					+ 스페이스
-				</button>
-			</h3>
+		<div className="mb-[18px]">
+			<div className="section-toolbar mb-3 flex flex-wrap items-center justify-between gap-2.5">
+				<h3 className="m-0 text-[15px] font-bold tracking-[-0.02em]">
+					{sec.title || "일일 진행 업무"}
+				</h3>
+				<div className="flex flex-wrap items-center gap-1.5">
+					<button
+						type="button"
+						className="btn btn-tiny btn-ghost"
+						title="직전 근무일의 '일일 진행 업무'에서 없는 항목만 가져옵니다 (진척·마감 유지, 완료 체크는 해제)"
+						onClick={importYesterday}
+					>
+						어제 일일
+					</button>
+					<button
+						type="button"
+						className="btn btn-tiny btn-ghost"
+						title="이 섹션 항목을 비웁니다 (저장 전이면 새로고침으로 복구)"
+						onClick={() => {
+							const label = sec.title || "일일 진행 업무";
+							if (!listHasContent(sec)) return toast("이미 비어 있어요");
+							if (!confirmReset(label)) return;
+							sec.items = [];
+							commit();
+							toast(label + " 초기화");
+						}}
+					>
+						초기화
+					</button>
+					<button
+						type="button"
+						className="btn btn-tiny btn-ghost"
+						title="데일리 스크럼처럼 이 섹션에도 스페이스(어느 업무 소속인지)를 만듭니다"
+						onClick={() => setGroupModalOpen(true)}
+					>
+						+ 스페이스
+					</button>
+				</div>
+			</div>
 
 			<div
 				className={
-					"grid gap-2.5 rounded-[10px] " +
-					(noneDrop.over ? "ring-2 ring-accent/40" : "")
+					"grid gap-2.5 " + (noneDrop.over ? "rounded-card ring-2 ring-accent/40" : "")
 				}
 				{...noneDrop.props}
 			>
 				{!sec.items.length && (
-					<div className="p-3.5 text-center text-[13px] text-ink-2">
+					<div className="rounded-[6px] border border-dashed border-line-strong bg-panel-2 p-4 text-center text-[13px] text-ink-2">
 						+ 항목으로 오늘 한 일을 추가하세요
 					</div>
 				)}
@@ -181,7 +183,7 @@ export function ListSection({
 
 			<button
 				type="button"
-				className="btn btn-tiny btn-ghost mt-1.5"
+				className="btn btn-tiny btn-ghost mt-2"
 				onClick={() => addItem("")}
 			>
 				+ 항목
@@ -253,16 +255,14 @@ function ListSpaceGroup({
 	return (
 		<div
 			className={
-				"mb-2.5 mt-2.5 rounded-[10px] border bg-panel p-2.5 " +
-				(spaceDrop.over
-					? "border-solid border-accent"
-					: "border-dashed border-line")
+				"space-card mt-3 " +
+				(spaceDrop.over ? "ring-2 ring-accent/40" : "")
 			}
 			{...spaceDrop.props}
 		>
-			<div className="mb-2 flex items-center gap-2">
+			<div className="space-card-hd">
 				<input
-					className="font-semibold"
+					className="min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[13.5px] font-bold"
 					list="spaceList"
 					placeholder="스페이스 (예: backend)"
 					value={group.label}
@@ -271,61 +271,63 @@ function ListSpaceGroup({
 						commit();
 					}}
 				/>
-				<button
-					type="button"
-					className="btn btn-icon btn-tiny"
-					disabled={!canUp}
-					title="스페이스 순서 위로"
-					onClick={() => {
-						if (moveListSpace(sec.items, group.label, -1)) commit();
-					}}
-				>
-					↑
-				</button>
-				<button
-					type="button"
-					className="btn btn-icon btn-tiny"
-					disabled={!canDown}
-					title="스페이스 순서 아래로"
-					onClick={() => {
-						if (moveListSpace(sec.items, group.label, 1)) commit();
-					}}
-				>
-					↓
-				</button>
-				<button
-					type="button"
-					className="btn btn-tiny btn-ghost"
-					onClick={() => {
-						sec.items.push({
-							done: false,
-							key: "",
-							desc: "",
-							progress: "",
-							due: "",
-							subs: [],
-							space: group.label,
-						});
-						commit();
-					}}
-				>
-					+ 항목
-				</button>
-				<button
-					type="button"
-					className="btn btn-icon btn-tiny"
-					title="스페이스 해제(항목은 무그룹으로 이동, 삭제되지 않음)"
-					onClick={() => {
-						renameListSpace(sec.items, group.label, "");
-						commit();
-						toast(`[${group.label}] 스페이스 해제`);
-					}}
-				>
-					✕
-				</button>
+				<div className="flex items-center gap-1">
+					<button
+						type="button"
+						className="btn btn-icon btn-tiny"
+						disabled={!canUp}
+						title="스페이스 순서 위로"
+						onClick={() => {
+							if (moveListSpace(sec.items, group.label, -1)) commit();
+						}}
+					>
+						↑
+					</button>
+					<button
+						type="button"
+						className="btn btn-icon btn-tiny"
+						disabled={!canDown}
+						title="스페이스 순서 아래로"
+						onClick={() => {
+							if (moveListSpace(sec.items, group.label, 1)) commit();
+						}}
+					>
+						↓
+					</button>
+					<button
+						type="button"
+						className="btn btn-tiny btn-ghost"
+						onClick={() => {
+							sec.items.push({
+								done: false,
+								key: "",
+								desc: "",
+								progress: "",
+								due: "",
+								subs: [],
+								space: group.label,
+							});
+							commit();
+						}}
+					>
+						+ 항목
+					</button>
+					<button
+						type="button"
+						className="btn btn-icon btn-tiny"
+						title="스페이스 해제(항목은 무그룹으로 이동, 삭제되지 않음)"
+						onClick={() => {
+							renameListSpace(sec.items, group.label, "");
+							commit();
+							toast(`[${group.label}] 스페이스 해제`);
+						}}
+					>
+						✕
+					</button>
+				</div>
 			</div>
 
-			<div className="grid gap-2.5">
+			<div className="space-card-bd">
 				{group.items.map(({ it, index }) => (
 					<ListItemRow
 						key={index}
@@ -425,9 +427,10 @@ function MultiLineField({
 	};
 	return (
 		<div>
-			<div className="mb-[3px] flex items-center gap-2">
-				<span className="text-xs text-ink-2">
-					{label} <span className="opacity-70">— 데일리 스크럼에 반영</span>
+			<div className="mb-2 flex items-center gap-2">
+				<span className="text-[12.5px] font-semibold text-ink-2">
+					{label}{" "}
+					<span className="font-medium opacity-70">— 데일리 스크럼에 반영</span>
 				</span>
 				<button
 					type="button"
@@ -439,62 +442,55 @@ function MultiLineField({
 				</button>
 			</div>
 			{items.length === 0 ? (
-				<p className="m-0 py-1 text-[12px] text-ink-2 opacity-70">
+				<p className="m-0 rounded-[6px] border border-dashed border-line-strong bg-panel-2 px-3 py-2.5 text-[12.5px] text-ink-2">
 					+ 추가로 {label}을(를) 입력하세요
 				</p>
 			) : (
 				<div className="grid gap-2">
 					{items.map((it, i) => (
-						<div
-							key={i}
-							className="rounded-lg bg-panel-2 p-2 transition-colors"
-						>
-							<div className="flex items-center gap-1.5">
+						<div key={i} className="task-row !gap-1.5 !py-2.5">
+							<div className="task-main !gap-1.5">
 								<input
-									className="flex-1"
+									className="min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[13.5px] font-semibold"
 									placeholder={`${label} 항목`}
 									value={it.text}
 									onChange={(e) => setMain(i, e.target.value)}
 								/>
-								<button
-									type="button"
-									className="btn btn-tiny btn-ghost"
-									disabled={!it.text.trim()}
-									title="이 항목에 하위 메모 추가"
-									onClick={() => addSub(i)}
-								>
-									+하위
-								</button>
-								<button
-									type="button"
-									className="btn btn-icon btn-tiny"
-									title="항목 삭제"
-									onClick={() => removeMain(i)}
-								>
-									✕
-								</button>
+								<div className="task-metrics !gap-1.5 !pt-0">
+									<button
+										type="button"
+										className="btn btn-tiny btn-ghost"
+										disabled={!it.text.trim()}
+										title="이 항목에 하위 메모 추가"
+										onClick={() => addSub(i)}
+									>
+										+하위
+									</button>
+									<button
+										type="button"
+										className="btn btn-icon btn-tiny"
+										title="항목 삭제"
+										onClick={() => removeMain(i)}
+									>
+										✕
+									</button>
+								</div>
 							</div>
 							{it.subs.length > 0 && (
-								<div className="mt-1.5 grid gap-1.5 pl-1">
-									{it.subs.map((s, si) => (
-										<div key={si} className="flex items-center gap-1.5">
-											<span className="flex-none text-[12px] text-ink-2 opacity-60">
-												↳
-											</span>
-											<input
-												className="flex-1"
-												value={s}
-												onChange={(e) => setSub(i, si, e.target.value)}
-											/>
-											<button
-												type="button"
-												className="btn btn-icon btn-tiny"
-												title="하위 삭제"
-												onClick={() => removeSub(i, si)}
-											>
-												−
-											</button>
-										</div>
+								<div className="w-full pl-2">
+									{it.subs.map((_s, si) => (
+										<MetaSubRow
+											key={si}
+											subs={it.subs}
+											index={si}
+											onChangeText={(t) => setSub(i, si, t)}
+											onRemove={() => removeSub(i, si)}
+											onReorder={() => {
+												const n = items.slice();
+												n[i] = { ...n[i], subs: n[i].subs.slice() };
+												emit(n);
+											}}
+										/>
 									))}
 								</div>
 							)}
@@ -502,6 +498,54 @@ function MultiLineField({
 					))}
 				</div>
 			)}
+		</div>
+	);
+}
+
+// 이슈·협업 하위 행 — 일일 SubList 와 동일한 드래그 순서 변경.
+function MetaSubRow({
+	subs,
+	index,
+	onChangeText,
+	onRemove,
+	onReorder,
+}: {
+	subs: string[];
+	index: number;
+	onChangeText: (t: string) => void;
+	onRemove: () => void;
+	onReorder: () => void;
+}) {
+	const { over, handleProps, rowProps } = useSubReorder(subs, index, onReorder);
+	return (
+		<div
+			className={
+				"sub-bullet drag-row flex items-center gap-1.5 py-1 " +
+				(over ? "dragover" : "")
+			}
+			{...rowProps}
+		>
+			<span
+				className="draghandle flex-none cursor-grab select-none px-[3px] text-[13px] leading-none text-ink-2"
+				title="드래그해서 하위 순서 변경"
+				{...handleProps}
+			>
+				⠿
+			</span>
+			<input
+				className="flex-1 border-0 bg-transparent px-0 py-0 text-[13px] text-ink-2"
+				placeholder="하위 항목"
+				value={subs[index] || ""}
+				onChange={(e) => onChangeText(e.target.value)}
+			/>
+			<button
+				type="button"
+				className="btn btn-icon btn-tiny flex-none text-[15px] leading-none"
+				title="하위 삭제"
+				onClick={onRemove}
+			>
+				−
+			</button>
 		</div>
 	);
 }
@@ -651,108 +695,126 @@ function ListItemRow({
 
 	return (
 		<div
-			className={
-				"drag-row flex flex-wrap items-center gap-2 rounded-lg bg-panel-2 p-2 " +
-				(over ? "dragover" : "")
-			}
+			className={"task-row drag-row" + (over ? " dragover" : "")}
 			{...props}
 			onContextMenu={onRowContextMenu}
 		>
-			<DragHandle arr={sec.items} index={index} />
+			<div className="task-main">
+				<DragHandle arr={sec.items} index={index} />
 
-			<span className="flex flex-none items-center gap-0.5">
-				<input
-					className="likey w-[104px] flex-none uppercase"
-					placeholder="티켓"
-					value={it.key || ""}
-					onChange={(e) => {
-						it.key = e.target.value.trim().toUpperCase();
-						commit();
-					}}
-				/>
-				<GoButton getKey={() => it.key} />
-			</span>
-
-			<textarea
-				ref={descRef}
-				className="min-h-[34px] min-w-[130px] flex-1 resize-none self-center overflow-hidden whitespace-pre-wrap break-words leading-[1.45]"
-				rows={1}
-				placeholder="한 일"
-				value={it.desc || ""}
-				onChange={(e) => {
-					const v = e.target.value.replace(/\n/g, ""); // 개행은 저장 안 함(한 줄 유지)
-					it.desc = v;
-					autoGrow(e.target);
-					commit();
-				}}
-				onKeyDown={(e) => {
-					if (e.key === "Enter") e.preventDefault();
-				}}
-			/>
-
-			<span className="flex flex-none items-center gap-1 whitespace-nowrap text-[12.5px] text-ink-2">
-				진척
-				<span className="relative inline-flex w-[58px] flex-col items-center">
+				<span className="task-title flex min-w-0 flex-1 items-center gap-1">
 					<input
-						className="w-full text-right"
-						type="number"
-						min={0}
-						max={100}
-						placeholder="%"
-						value={it.progress === 0 ? "0" : it.progress || ""}
+						className="likey task-key flex-none border-0 bg-transparent px-0 py-0 font-mono text-[12.5px] font-bold uppercase text-accent-text placeholder:normal-case placeholder:font-semibold placeholder:text-accent-text/45"
+						placeholder="티켓"
+						value={it.key || ""}
+						size={Math.max(4, (it.key || "티켓").length)}
 						onChange={(e) => {
-							it.progress = e.target.value === "" ? "" : Number(e.target.value);
+							it.key = e.target.value.trim().toUpperCase();
 							commit();
 						}}
 					/>
-					{prev && typeof prev.progress === "number" && (
-						<span
-							className="pointer-events-none absolute left-1/2 top-[calc(100%+1px)] -translate-x-1/2 whitespace-nowrap text-[11px] font-medium leading-none text-sky-500"
-							title={`${prev.from} 진척도`}
-						>
-							전일 {prev.progress}%
-						</span>
-					)}
+					<GoButton getKey={() => it.key} />
+					<textarea
+						ref={descRef}
+						className="task-desc min-w-0 flex-1 resize-none border-0 bg-transparent px-0 py-0 text-[13.5px] font-semibold whitespace-pre-wrap break-words placeholder:font-medium placeholder:text-ink-2/55"
+						rows={1}
+						placeholder="한 일"
+						value={it.desc || ""}
+						onChange={(e) => {
+							const v = e.target.value.replace(/\n/g, ""); // 개행은 저장 안 함(한 줄 유지)
+							it.desc = v;
+							autoGrow(e.target);
+							commit();
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") e.preventDefault();
+						}}
+					/>
 				</span>
-				%
-			</span>
 
-			<span className="flex flex-none items-center gap-1 whitespace-nowrap text-[12.5px] text-ink-2">
-				마감
-				<input
-					type="date"
-					value={it.due || ""}
-					title="티켓 키가 있으면 실제 Jira 이슈의 마감일도 함께 수정됩니다"
-					onChange={(e) => {
-						it.due = e.target.value;
-						commit();
-						syncDueToJira((it.key || "").trim().toUpperCase(), it.due);
-					}}
-				/>
-			</span>
+				<div className="task-metrics">
+					<span
+						className={
+							"metric-prev" +
+							(prev && typeof prev.progress === "number" ? "" : " invisible")
+						}
+						title={
+							prev && typeof prev.progress === "number"
+								? `${prev.from} 진척도`
+								: undefined
+						}
+						aria-hidden={!(prev && typeof prev.progress === "number")}
+					>
+						전일 {prev && typeof prev.progress === "number" ? prev.progress : 0}%
+					</span>
+					<span className="metric-progress-row">
+						진척
+						<input
+							type="number"
+							min={0}
+							max={100}
+							placeholder="0"
+							value={it.progress === 0 ? "0" : it.progress || ""}
+							onChange={(e) => {
+								it.progress =
+									e.target.value === "" ? "" : Number(e.target.value);
+								commit();
+							}}
+						/>
+						%
+					</span>
 
-			<button
-				type="button"
-				className="btn btn-tiny btn-ghost"
-				onClick={() => {
-					it.subs!.push("");
-					commit();
-				}}
-			>
-				+하위
-			</button>
+					<span className="metric-deadline">
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							aria-hidden="true"
+						>
+							<rect x="3" y="4" width="18" height="18" rx="2" />
+							<path d="M16 2v4M8 2v4M3 10h18" />
+						</svg>
+						<input
+							type="date"
+							value={it.due || ""}
+							title="티켓 키가 있으면 실제 Jira 이슈의 마감일도 함께 수정됩니다"
+							onChange={(e) => {
+								it.due = e.target.value;
+								commit();
+								syncDueToJira((it.key || "").trim().toUpperCase(), it.due);
+							}}
+						/>
+					</span>
 
-			<button
-				type="button"
-				className="btn btn-icon btn-tiny"
-				title="삭제"
-				onClick={() => {
-					sec.items.splice(index, 1);
-					commit();
-				}}
-			>
-				✕
-			</button>
+					<button
+						type="button"
+						className="btn btn-tiny btn-ghost"
+						onClick={() => {
+							it.subs!.push("");
+							commit();
+						}}
+					>
+						+하위
+					</button>
+
+					<button
+						type="button"
+						className="btn btn-icon btn-tiny"
+						title="삭제"
+						onClick={() => {
+							sec.items.splice(index, 1);
+							commit();
+						}}
+					>
+						✕
+					</button>
+				</div>
+			</div>
 
 			<SubList subs={it.subs} />
 
