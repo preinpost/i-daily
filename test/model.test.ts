@@ -10,6 +10,9 @@ import {
 	renderScrumHtml,
 	todayStr,
 	kstParts,
+	appendDailyTasks,
+	emptyDoc,
+	dailyItemsOf,
 } from "../src/shared/model.ts";
 import { kanbanColumns } from "../src/renderer/src/lib/model.ts";
 
@@ -195,4 +198,26 @@ test("kanbanColumns: 마감 임박 순 · 마감 없으면 맨 아래 · 동일 
 	expect(todo.items.map((t: any) => t.key).join(",")).toBe(
 		"AB-10,AB-2,AB-9,AB-3,AB-1",
 	);
+});
+
+// ── MCP/에이전트용 일일 항목 append ──
+test("appendDailyTasks: list 섹션에 구조화 항목 추가·빈 항목 스킵·키 대문자", () => {
+	const doc = emptyDoc("2026-07-10", "홍길동");
+	const added = appendDailyTasks(doc, [
+		{
+			done: false,
+			key: "opit-1",
+			desc: "a",
+			progress: 40,
+			due: "2026-07-12",
+			subs: ["하위1"],
+			space: "backend",
+		},
+		{ done: false, key: "", desc: "", progress: "", due: "", subs: [] },
+		{ done: false, key: "", desc: "메모만", progress: "", due: "", subs: [] },
+	]);
+	expect(added.length).toBe(2);
+	expect(added[0].key).toBe("OPIT-1");
+	expect(added[0].subs).toEqual(["하위1"]);
+	expect(dailyItemsOf(doc).map((x) => x.desc)).toEqual(["a", "메모만"]);
 });

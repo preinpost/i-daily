@@ -645,13 +645,35 @@ export const dayResponse = (jiraBase: string, doc: Doc) => ({
 	teamsHtml: renderScrumHtml(jiraBase, doc.scrum),
 });
 
+// 문서의 일일 진행 업무(list 섹션) — 없으면 undefined.
+export function listSection(
+	doc: Doc,
+): (Section & { kind: "list" }) | undefined {
+	return doc.sections.find((s) => s.kind === "list") as
+		| (Section & { kind: "list" })
+		| undefined;
+}
+
+/** 일일 list 섹션 보장(없으면 맨 앞에 생성). */
+export function ensureListSection(doc: Doc): Section & { kind: "list" } {
+	const existing = listSection(doc);
+	if (existing) {
+		existing.items ??= [];
+		return existing;
+	}
+	const sec: Section & { kind: "list" } = {
+		title: "일일 진행 업무",
+		kind: "list",
+		items: [],
+	};
+	doc.sections.unshift(sec);
+	return sec;
+}
+
 // 문서의 일일 진행 업무(list 섹션) 항목들 — 필드를 정규화해 반환.
 // prev-daily 가져오기 · 전일 이월 등 "어제 일일 → 전일" 흐름의 단일 원천.
 export function dailyItemsOf(doc: Doc): ListItem[] {
-	const sec = doc.sections.find((s) => s.kind === "list") as
-		| (Section & { kind: "list" })
-		| undefined;
-	return (sec?.items ?? []).map((it) => ({
+	return (listSection(doc)?.items ?? []).map((it) => ({
 		done: !!it.done,
 		key: it.key || "",
 		desc: it.desc || "",
@@ -660,6 +682,33 @@ export function dailyItemsOf(doc: Doc): ListItem[] {
 		subs: (it.subs || []).slice(),
 		space: it.space || "",
 	}));
+}
+
+/** 일일 진행 업무에 항목 append. 빈(key·desc 모두 공백) 항목은 건너뛴다. */
+export function appendDailyTasks(doc: Doc, items: ListItem[]): ListItem[] {
+	const sec = ensureListSection(doc);
+	const added: ListItem[] = [];
+	for (const it of items) {
+		const key = (it.key || "").trim().toUpperCase();
+		const desc = (it.desc || "").trim();
+		if (!key && !desc) continue;
+		const progress =
+			typeof it.progress === "number"
+				? Math.max(0, Math.min(100, it.progress))
+				: "";
+		const row: ListItem = {
+			done: !!it.done,
+			key,
+			desc,
+			progress,
+			due: it.due || "",
+			subs: (it.subs || []).map((s) => String(s ?? "")),
+			space: (it.space || "").trim(),
+		};
+		sec.items.push(row);
+		added.push(row);
+	}
+	return added;
 }
 
 export async function carryNew(

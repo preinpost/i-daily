@@ -31,6 +31,7 @@ import {
 	listItems,
 	shortcuts,
 	settings,
+	weeklyReports,
 	jiraAuth,
 	aiAuth,
 	oauthStates,
@@ -656,6 +657,132 @@ export async function listSpaceLabels(db: DB, user: string): Promise<string[]> {
 		out.push(t);
 	}
 	return out;
+}
+
+// ───────────────────────── 주간보고 스냅샷 ─────────────────────────
+export type WeeklyReportRow = {
+	from: string;
+	to: string;
+	thisWeek: string;
+	nextWeek: string;
+	updatedAt: string;
+};
+
+export type WeeklyReportMeta = {
+	from: string;
+	to: string;
+	updatedAt: string;
+};
+
+export async function listWeeklyReports(
+	db: DB,
+	user: string,
+): Promise<WeeklyReportMeta[]> {
+	const rows = await db
+		.select({
+			from: weeklyReports.fromDate,
+			to: weeklyReports.toDate,
+			updatedAt: weeklyReports.updatedAt,
+		})
+		.from(weeklyReports)
+		.where(eq(weeklyReports.user, user))
+		.orderBy(desc(weeklyReports.fromDate))
+		.all();
+	return rows.map((r) => ({
+		from: r.from,
+		to: r.to,
+		updatedAt: r.updatedAt,
+	}));
+}
+
+export async function getWeeklyReport(
+	db: DB,
+	user: string,
+	from: string,
+	to: string,
+): Promise<WeeklyReportRow | null> {
+	const row = await db
+		.select()
+		.from(weeklyReports)
+		.where(
+			and(
+				eq(weeklyReports.user, user),
+				eq(weeklyReports.fromDate, from),
+				eq(weeklyReports.toDate, to),
+			),
+		)
+		.get();
+	if (!row) return null;
+	return {
+		from: row.fromDate,
+		to: row.toDate,
+		thisWeek: row.thisWeek,
+		nextWeek: row.nextWeek,
+		updatedAt: row.updatedAt,
+	};
+}
+
+export async function putWeeklyReport(
+	db: DB,
+	user: string,
+	input: {
+		from: string;
+		to: string;
+		thisWeek: string;
+		nextWeek: string;
+	},
+): Promise<WeeklyReportRow> {
+	const updatedAt = new Date().toISOString();
+	const row = {
+		user,
+		fromDate: input.from,
+		toDate: input.to,
+		thisWeek: input.thisWeek || "",
+		nextWeek: input.nextWeek || "",
+		updatedAt,
+	};
+	await db
+		.insert(weeklyReports)
+		.values(row)
+		.onConflictDoUpdate({
+			target: [
+				weeklyReports.user,
+				weeklyReports.fromDate,
+				weeklyReports.toDate,
+			],
+			set: {
+				thisWeek: row.thisWeek,
+				nextWeek: row.nextWeek,
+				updatedAt,
+			},
+		});
+	return {
+		from: input.from,
+		to: input.to,
+		thisWeek: row.thisWeek,
+		nextWeek: row.nextWeek,
+		updatedAt,
+	};
+}
+
+export async function deleteWeeklyReport(
+	db: DB,
+	user: string,
+	from: string,
+	to: string,
+): Promise<boolean> {
+	const existing = await getWeeklyReport(db, user, from, to);
+	if (!existing) return false;
+	await db
+		.delete(weeklyReports)
+		.where(
+			and(
+				eq(weeklyReports.user, user),
+				eq(weeklyReports.fromDate, from),
+				eq(weeklyReports.toDate, to),
+			),
+		);
+	return true;
 }
 
 // ───────────────────────── Store / Backend 팩토리 ─────────────────────────

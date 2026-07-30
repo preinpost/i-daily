@@ -124,6 +124,20 @@ export const settings = sqliteTable("settings", {
 	json: text("json").notNull().default("{}"),
 });
 
+// weekly_reports — 주간업무보고 스냅샷(금~목 기간별). 집계/다듬기 결과 보관.
+export const weeklyReports = sqliteTable(
+	"weekly_reports",
+	{
+		user: text("user").notNull(),
+		fromDate: text("from_date").notNull(),
+		toDate: text("to_date").notNull(),
+		thisWeek: text("this_week").notNull().default(""),
+		nextWeek: text("next_week").notNull().default(""),
+		updatedAt: text("updated_at").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.user, t.fromDate, t.toDate] })],
+);
+
 // jira_auth — user별 OAuth 토큰 JSON 한 행 (config 와 분리해 렌더러 유출 방지)
 export const jiraAuth = sqliteTable("jira_auth", {
 	user: text("user").primaryKey(),

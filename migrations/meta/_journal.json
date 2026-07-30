@@ -36,6 +36,13 @@
       "when": 1785292311535,
       "tag": "0004_better_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1785379200000,
+      "tag": "0005_weekly_reports",
+      "breakpoints": true
     }
   ]
 }

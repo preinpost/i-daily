@@ -61,6 +61,8 @@ export function App() {
 	const metaRef = useRef(meta);
 	const teamsRef = useRef("");
 	const teamsHtmlRef = useRef("");
+	/** 마지막으로 서버에서 받아 적용한 Doc 지문 — MCP 등 외부 쓰기 감지용. */
+	const serverFpRef = useRef("");
 
 	// 핸들러가 항상 최신 값을 보도록 매 렌더 동기화
 	curDateRef.current = curDate;
@@ -87,6 +89,10 @@ export function App() {
 		setTeams(t);
 	}
 
+	function rememberServerDoc(doc: Doc) {
+		serverFpRef.current = JSON.stringify(doc);
+	}
+
 	async function loadDate(date: string) {
 		if (
 			dirty.current &&
@@ -109,6 +115,7 @@ export function App() {
 			setDot("", "새 기록 · 입력하면 생성됨");
 		}
 		normalizeDoc(docRef.current!);
+		rememberServerDoc(docRef.current!);
 		setReady(true);
 		bump();
 	}
@@ -124,6 +131,11 @@ export function App() {
 		const r = await api<any>("PUT", "/api/day/" + curDateRef.current, doc);
 		if (r.ok && r.json) {
 			setDirty(false);
+			if (r.json.data) {
+				docRef.current = r.json.data;
+				normalizeDoc(docRef.current!);
+			}
+			rememberServerDoc(docRef.current!);
 			applyTeams(r.json.teams, r.json.teamsHtml || "");
 			setDot(
 				"",
@@ -137,6 +149,7 @@ export function App() {
 			const sp = await api<{ spaces: string[] }>("GET", "/api/spaces");
 			if (sp.ok && sp.json?.spaces) setSpaceHistory(sp.json.spaces);
 			toast("저장됨");
+			bump();
 			return true;
 		}
 		setDot("err", "저장 실패 — 서버 확인");
@@ -165,9 +178,46 @@ export function App() {
 			setDot("", "되돌림 · 새 기록");
 		}
 		normalizeDoc(docRef.current!);
+		rememberServerDoc(docRef.current!);
 		setDirty(false);
 		toast("마지막 저장 상태로 되돌렸어요");
 		bump();
+	}
+
+	/** MCP·다른 탭 등 외부 쓰기 감지 — dirty 가 아닐 때만 서버 Doc 으로 덮어쓴다. */
+	async function syncFromServer() {
+		if (dirty.current) return;
+		if (document.visibilityState === "hidden") return;
+		if (!docRef.current) return;
+		const date = curDateRef.current;
+		const r = await api<any>("GET", "/api/day/" + date);
+		if (dirty.current || date !== curDateRef.current) return;
+		if (r.ok && r.json?.data) {
+			const next = r.json.data as Doc;
+			normalizeDoc(next);
+			const fp = JSON.stringify(next);
+			if (fp === serverFpRef.current) return;
+			docRef.current = next;
+			rememberServerDoc(next);
+			applyTeams(r.json.teams || "", r.json.teamsHtml || "");
+			setDot("", "동기화됨");
+			bump();
+			toast("외부에서 갱신됨");
+			return;
+		}
+		// 서버에 없음 → 로컬이 비어 있지 않으면(외부에서 삭제된 경우) 스켈레톤으로
+		if (r.status === 404 && serverFpRef.current) {
+			const empty = emptyDoc(metaRef.current, date);
+			normalizeDoc(empty);
+			const fp = JSON.stringify(empty);
+			if (fp === serverFpRef.current) return;
+			docRef.current = empty;
+			rememberServerDoc(empty);
+			applyTeams("", "");
+			setDot("", "새 기록 · 입력하면 생성됨");
+			bump();
+			toast("외부에서 갱신됨");
+		}
 	}
 
 	// 데일리 스크럼 생성 — 금일 블록을 오늘 일일 진행 업무로 확정하고(이슈·협업 유지)
@@ -293,6 +343,21 @@ export function App() {
 		};
 	}, []);
 
+	// 외부 쓰기(MCP 등) — 탭 복귀·창 포커스 시에만 재로드(주기 폴링 없음 → Workers 요청 최소).
+	useEffect(() => {
+		if (!ready || !authed) return;
+		const onResume = () => {
+			if (document.visibilityState === "visible") void syncFromServer();
+		};
+		document.addEventListener("visibilitychange", onResume);
+		window.addEventListener("focus", onResume);
+		return () => {
+			document.removeEventListener("visibilitychange", onResume);
+			window.removeEventListener("focus", onResume);
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ready, authed]);
+
 	// Jira OAuth 팝업이 로그인 완료를 postMessage 로 알리면(= 새 sid 쿠키 반영됨) 재부팅.
 	// 새 세션 user(account_id) 로 config/일지를 다시 불러오기 위해 location.reload.
 	useEffect(() => {
@@ -368,11 +433,7 @@ export function App() {
 
 			<TicketsPane active={view === "tickets"} />
 			<LunchPane active={view === "lunch"} config={config} />
-			<WeeklyReportPane
-				active={view === "report"}
-				config={config}
-				onSaved={onConfigSaved}
-			/>
+			<WeeklyReportPane active={view === "report"} />
 			<ConfigPane
 				active={view === "config"}
 				config={config}

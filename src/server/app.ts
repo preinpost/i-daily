@@ -21,7 +21,12 @@ import {
 	writeAiAuthEnc,
 	clearAiAuth,
 	hasAiAuth,
+	listWeeklyReports,
+	getWeeklyReport,
+	putWeeklyReport,
+	deleteWeeklyReport,
 } from "../shared/store-drizzle.ts";
+import { composeWeeklyReportText, splitDigestText } from "../shared/report.ts";
 import { encryptSecret } from "./crypto.ts";
 import {
 	jiraStatus,
@@ -53,6 +58,68 @@ export function buildApp(backend: Backend, db: DB, env: Env): Hono {
 		return c.json(r);
 	});
 	app.get("/api/agent/default-prompt", (c) => c.json(defaultPrompt()));
+
+	// ── 주간보고 스냅샷 ── 기간별 저장본(오른쪽 목록 · MCP save).
+	const YMD = /^\d{4}-\d{2}-\d{2}$/;
+	app.get("/api/weekly-reports", async (c) => {
+		const items = await listWeeklyReports(db, backend.user);
+		return c.json({ reports: items });
+	});
+	app.get("/api/weekly-reports/:from/:to", async (c) => {
+		const from = c.req.param("from");
+		const to = c.req.param("to");
+		if (!YMD.test(from) || !YMD.test(to)) {
+			return c.json({ error: "invalid date" }, 400);
+		}
+		const row = await getWeeklyReport(db, backend.user, from, to);
+		if (!row) return c.json({ error: "not found", from, to }, 404);
+		return c.json({
+			...row,
+			text: composeWeeklyReportText(row.thisWeek, row.nextWeek),
+		});
+	});
+	app.put("/api/weekly-reports", async (c) => {
+		const body = (await c.req.json().catch(() => ({}))) as {
+			from?: string;
+			to?: string;
+			thisWeek?: string;
+			nextWeek?: string;
+			text?: string;
+		};
+		const from = String(body.from || "").trim();
+		const to = String(body.to || "").trim();
+		if (!YMD.test(from) || !YMD.test(to) || from > to) {
+			return c.json({ ok: false, error: "from/to YYYY-MM-DD 필요" }, 400);
+		}
+		let thisWeek = String(body.thisWeek ?? "");
+		let nextWeek = String(body.nextWeek ?? "");
+		// text 만 오면 금주/차주로 분할
+		if (body.text != null && body.thisWeek == null && body.nextWeek == null) {
+			const parts = splitDigestText(String(body.text));
+			thisWeek = parts.thisWeek;
+			nextWeek = parts.nextWeek;
+		}
+		const saved = await putWeeklyReport(db, backend.user, {
+			from,
+			to,
+			thisWeek,
+			nextWeek,
+		});
+		return c.json({
+			ok: true,
+			...saved,
+			text: composeWeeklyReportText(saved.thisWeek, saved.nextWeek),
+		});
+	});
+	app.delete("/api/weekly-reports/:from/:to", async (c) => {
+		const from = c.req.param("from");
+		const to = c.req.param("to");
+		if (!YMD.test(from) || !YMD.test(to)) {
+			return c.json({ ok: false, error: "invalid date" }, 400);
+		}
+		const ok = await deleteWeeklyReport(db, backend.user, from, to);
+		return c.json({ ok }, ok ? 200 : 404);
+	});
 
 	// ── AI(BYOK) 키 ── 키는 ai_auth 에 AES-GCM 암호문으로만 저장. 평문은 렌더러로 절대 반환 안 함.
 	app.get("/api/ai/status", async (c) => {
