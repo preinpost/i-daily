@@ -222,6 +222,7 @@ export function fmtDue(due: string): string {
 	return `${+p[1]}/${+p[2]}`;
 }
 // 진척·마감 메타 `(N%, ~M/D)` — 스크럼 태스크·일일 항목 공용.
+// 파서는 `(~N%, M/D)` · `(N%, M/D)` 같이 ~ 위치가 어긋난 붙여넣기도 허용.
 export function fmtMeta(
 	progress: number | "" | null | undefined,
 	due: string | null | undefined,
@@ -231,6 +232,25 @@ export function fmtMeta(
 		parts.push(`${progress}%`);
 	if (due) parts.push("~" + fmtDue(due));
 	return parts.length ? ` (${parts.join(", ")})` : "";
+}
+
+/** 괄호 안 메타 문자열에서 진척·마감 추출. 해당 없으면 null. */
+function parseParenMeta(
+	meta: string,
+	year: number,
+): { progress: number | ""; due: string } | null {
+	const hasProgress = /\d+\s*%/.test(meta);
+	const hasDue = /\d+\s*\/\s*\d+/.test(meta);
+	if (!hasProgress && !hasDue) return null;
+	let progress: number | "" = "";
+	let due = "";
+	const pm = meta.match(/(\d+)\s*%/);
+	if (pm) progress = Number(pm[1]);
+	// ~는 선택 — `(~100%, 07/31)` · `(100%, ~7/31)` · `(~7/31)` 모두 허용
+	const dm = meta.match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+	if (dm)
+		due = `${year}-${String(+dm[1]).padStart(2, "0")}-${String(+dm[2]).padStart(2, "0")}`;
+	return { progress, due };
 }
 export function taskMeta(t: Task): string {
 	return fmtMeta(t.progress, t.due);
@@ -447,13 +467,11 @@ export function parseList(
 			progress: number | "" = "",
 			due = "";
 		const mm = content.match(/^(.*?)\s*\(([^)]*)\)\s*$/); // 끝의 (N%, ~M/D) 메타 (스크럼 태스크와 동일 규칙)
-		if (mm && (/\d+\s*%/.test(mm[2]) || /~\s*\d+\/\d+/.test(mm[2]))) {
+		const meta = mm ? parseParenMeta(mm[2], year) : null;
+		if (mm && meta) {
 			desc = mm[1].trim();
-			const pm = mm[2].match(/(\d+)\s*%/);
-			if (pm) progress = Number(pm[1]);
-			const dm = mm[2].match(/~\s*(\d+)\/(\d+)/);
-			if (dm)
-				due = `${year}-${String(+dm[1]).padStart(2, "0")}-${String(+dm[2]).padStart(2, "0")}`;
+			progress = meta.progress;
+			due = meta.due;
 		}
 		const item: ListItem = { done, key, desc, progress, due, subs: [], space };
 		items.push(item);
@@ -555,13 +573,11 @@ function splitProgressMeta(
 	let progress: number | "" = "";
 	let due = "";
 	const mm = content.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
-	if (mm && (/\d+\s*%/.test(mm[2]) || /~\s*\d+\/\d+/.test(mm[2]))) {
+	const meta = mm ? parseParenMeta(mm[2], year) : null;
+	if (mm && meta) {
 		desc = mm[1].trim();
-		const pm = mm[2].match(/(\d+)\s*%/);
-		if (pm) progress = Number(pm[1]);
-		const dm = mm[2].match(/~\s*(\d+)\/(\d+)/);
-		if (dm)
-			due = `${year}-${String(+dm[1]).padStart(2, "0")}-${String(+dm[2]).padStart(2, "0")}`;
+		progress = meta.progress;
+		due = meta.due;
 	}
 	return { desc, progress, due };
 }
@@ -580,7 +596,8 @@ function looksLikeTeamsTask(content: string): boolean {
 	if (/^\[([^\]]+)\]\([^)]*\)/.test(content)) return true; // 마크다운 링크
 	const br = content.match(/^\[([^\]]+)\]/);
 	if (br && JIRA_KEY_RE.test(br[1].trim())) return true;
-	return /\(\s*\d+\s*%/.test(content) || /~\s*\d+\/\d+/.test(content);
+	// `(~100%, 07/31)` 처럼 ~가 % 앞에 붙은 붙여넣기도 태스크로 인식
+	return /\(\s*~?\s*\d+\s*%/.test(content) || /~\s*\d+\/\d+/.test(content);
 }
 
 /** 한 줄 → 일일 항목. Jira 키(`[OPIT-1]`)만 key로, `[고객명]` 등은 desc에 유지. */
@@ -763,13 +780,11 @@ export function parseTask(content: string, year: number): Task {
 	let progress: number | "" = "";
 	let due = "";
 	const mm = rest.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
-	if (mm && (/\d+\s*%/.test(mm[2]) || /~\s*\d+\/\d+/.test(mm[2]))) {
+	const meta = mm ? parseParenMeta(mm[2], year) : null;
+	if (mm && meta) {
 		desc = mm[1].trim();
-		const pm = mm[2].match(/(\d+)\s*%/);
-		if (pm) progress = Number(pm[1]);
-		const dm = mm[2].match(/~\s*(\d+)\/(\d+)/);
-		if (dm)
-			due = `${year}-${String(+dm[1]).padStart(2, "0")}-${String(+dm[2]).padStart(2, "0")}`;
+		progress = meta.progress;
+		due = meta.due;
 	}
 	return { key, desc, progress, due, subs: [] };
 }

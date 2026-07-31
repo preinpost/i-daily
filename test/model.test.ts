@@ -355,6 +355,39 @@ test("parseTeamsPaste: 스페이스 [라벨] + 티켓 아래 평문 줄은 subs"
 	expect(r.collab).toBe("");
 });
 
+test("parseTeamsPaste: (~N%, M/D) · zero-pad 마감도 파싱", () => {
+	const text = [
+		"[금일 진행 업무]",
+		"업무 계획",
+		"[OPIT-1836] 유지보수 큐 갱신 (~100%, 07/31)",
+		"[OPIT-1864] [나이스(NEIS)] 액션 이력 무한 로딩 (~30%, 08/05)",
+		"[OPIT-1] 표준 형식 (40%, ~7/12)",
+		"이슈 사항 : 없음",
+		"협업 및 기타",
+		"온콜 대응(100%, ~07/31)",
+	].join("\n");
+	const r = parseTeamsPaste(text, 2026);
+	expect(r.items.map((it) => [it.key, it.progress, it.due])).toEqual([
+		["OPIT-1836", 100, "2026-07-31"],
+		["OPIT-1864", 30, "2026-08-05"],
+		["OPIT-1", 40, "2026-07-12"],
+	]);
+	expect(r.items[1].desc).toContain("[나이스(NEIS)]");
+	expect(r.issues).toBe("");
+	expect(r.collab).toBe("온콜 대응(100%, ~07/31)");
+
+	// 줄 단위: ~ 위치·zero-pad 변형
+	expect(parseTeamsTaskLine("[K-1] a (~50%, 07/31)", 2026)?.due).toBe(
+		"2026-07-31",
+	);
+	expect(parseTeamsTaskLine("[K-1] a (50%, ~07/31)", 2026)?.due).toBe(
+		"2026-07-31",
+	);
+	expect(parseTeamsTaskLine("[K-1] a (50%, 7/31)", 2026)?.due).toBe(
+		"2026-07-31",
+	);
+});
+
 // ── MCP/에이전트용 일일 항목 append ──
 test("appendDailyTasks: list 섹션에 구조화 항목 추가·빈 항목 스킵·키 대문자", () => {
 	const doc = emptyDoc("2026-07-10", "홍길동");
