@@ -181,3 +181,88 @@ test("config 부분 갱신: owner/jiraBase 보존", async () => {
 	expect(c2.body.config.owner).toBe("홍길동");
 	expect(c2.body.config.jiraBase).toBe("https://jira.test");
 });
+
+// ── 업무일지 내보내기 /api/export ──
+
+async function putDay(app: Hono, date: string, md: string) {
+	await call(app, "PUT", `/api/day/${date}`, parseDoc(md, date, "홍길동"));
+}
+
+test("/api/export md: 기간 내 일지 → 마크다운 다운로드 본문", async () => {
+	const app = await makeApp();
+	await call(app, "PUT", "/api/config", { owner: "홍길동", jiraBase: "https://jira.test" });
+	await putDay(
+		app,
+		"2026-07-10",
+		"## 데일리 스크럼\n\n**[금일 진행 업무]**\n  + **[backend]**\n    + [OPIT-1](https://x/OPIT-1) 작업\n- 이슈 사항: 없음\n- 협업 및 기타: 없음",
+	);
+	await putDay(
+		app,
+		"2026-07-11",
+		"## 일일 진행 업무\n- [OPIT-2](https://x/OPIT-2) 배포\n\n## 데일리 스크럼\n\n- 이슈 사항: 없음\n- 협업 및 기타: 없음",
+	);
+	// 범위 밖 날짜는 제외되는지 확인
+	await putDay(app, "2026-08-01", "## 데일리 스크럼\n\n- 이슈 사항: 없음\n- 협업 및 기타: 없음");
+
+	const res = await app.request(
+		"/api/export?from=2026-07-10&to=2026-07-11&format=md",
+		{ method: "GET" },
+	);
+	expect(res.status).toBe(200);
+	expect(res.headers.get("content-type")).toContain("text/markdown");
+	expect(res.headers.get("content-disposition")).toContain(
+		'i-daily_2026-07-10_2026-07-11.md',
+	);
+	const body = await res.text();
+	expect(body).toContain("# i-daily 업무일지 (2026-07-10 ~ 2026-07-11)");
+	expect(body).toContain("## 2026-07-10");
+	expect(body).toContain("## 2026-07-11");
+	expect(body).not.toContain("2026-08-01");
+	expect(body).toContain("https://jira.test/browse/OPIT-1");
+});
+
+test("/api/export json: Doc 객체 + 메타 반환", async () => {
+	const app = await makeApp();
+	await call(app, "PUT", "/api/config", { owner: "홍길동", jiraBase: "https://jira.test" });
+	await putDay(
+		app,
+		"2026-07-10",
+		"## 데일리 스크럼\n\n**[금일 진행 업무]**\n  + **[backend]**\n    + [OPIT-1](https://x/OPIT-1) 작업\n- 이슈 사항: 없음\n- 협업 및 기타: 없음",
+	);
+	const res = await app.request(
+		"/api/export?from=2026-07-10&to=2026-07-10&format=json",
+		{ method: "GET" },
+	);
+	expect(res.status).toBe(200);
+	expect(res.headers.get("content-type")).toContain("application/json");
+	const j = (await res.json()) as any;
+	expect(j.from).toBe("2026-07-10");
+	expect(j.to).toBe("2026-07-10");
+	expect(j.count).toBe(1);
+	expect(j.days[0].date).toBe("2026-07-10");
+	expect(j.days[0].doc.scrum.today.spaces[0].tasks[0].key).toBe("OPIT-1");
+});
+
+test("/api/export 빈 기간: count 0 + JSON(다운로드 아님)", async () => {
+	const app = await makeApp();
+	const res = await app.request(
+		"/api/export?from=2026-07-01&to=2026-07-31&format=md",
+		{ method: "GET" },
+	);
+	expect(res.status).toBe(200);
+	const j = (await res.json()) as any;
+	expect(j.count).toBe(0);
+	expect(j.days).toEqual([]);
+});
+
+test("/api/export 잘못된 from/to: 400", async () => {
+	const app = await makeApp();
+	const r1 = await call(app, "GET", "/api/export?from=bad&to=2026-07-11&format=md");
+	expect(r1.status).toBe(400);
+	// from > to
+	const r2 = await call(app, "GET", "/api/export?from=2026-07-11&to=2026-07-10&format=md");
+	expect(r2.status).toBe(400);
+	// 잘못된 format
+	const r3 = await call(app, "GET", "/api/export?from=2026-07-10&to=2026-07-11&format=xml");
+	expect(r3.status).toBe(400);
+});

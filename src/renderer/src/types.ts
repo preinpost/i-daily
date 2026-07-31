@@ -61,6 +61,11 @@ export type Api = {
 	agent: {
 		generate: (opts?: unknown) => Promise<any>;
 	};
+	exportLog: (
+		from: string,
+		to: string,
+		format: "md" | "json",
+	) => Promise<{ status: number; body: any }>;
 };
 
 declare global {

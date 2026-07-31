@@ -92,4 +92,6 @@ export const webApi: Api = {
 	agent: {
 		generate: (opts?: unknown) => post("/api/agent/generate", opts),
 	},
+	exportLog: (from: string, to: string, format: "md" | "json") =>
+		request("GET", `/api/export?from=${from}&to=${to}&format=${format}`),
 };

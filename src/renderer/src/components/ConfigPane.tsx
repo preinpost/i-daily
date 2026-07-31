@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useToast } from "./Toast";
+import { weekWindow } from "../../../shared/report.ts";
+import { kstParts } from "../../../shared/model.ts";
 
 type JiraStatus = {
 	connected?: boolean;
@@ -40,6 +42,219 @@ function CodeBlock({
 				복사
 			</button>
 		</div>
+	);
+}
+
+type ExportFormat = "md" | "json";
+
+type DateRangePreset = {
+	id: string;
+	label: string;
+	range: (now: Date) => { from: string; to: string };
+};
+
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+const ymd = (y: number, m: number, d: number): string =>
+	`${y}-${pad2(m)}-${pad2(d)}`;
+
+// KST 기준 월의 첫날·말일.
+function monthBounds(ref: Date, offset = 0): { from: string; to: string } {
+	const { y, m } = kstParts(ref);
+	const tm = m + offset; // 1-base
+	const year = y + Math.floor((tm - 1) / 12);
+	const mon = ((tm - 1) % 12) + 1;
+	const from = ymd(year, mon, 1);
+	const lastDay = new Date(Date.UTC(year, mon, 0)).getUTCDate(); // 0일 = 저번 달 말일
+	return { from, to: ymd(year, mon, lastDay) };
+}
+
+// 저번 주(금~목) = 이번 주 창에서 7일 전.
+function prevWeekWindow(ref: Date): { from: string; to: string } {
+	const w = weekWindow(ref);
+	const fromD = new Date(w.from + "T00:00:00Z");
+	fromD.setUTCDate(fromD.getUTCDate() - 7);
+	const toD = new Date(w.to + "T00:00:00Z");
+	toD.setUTCDate(toD.getUTCDate() - 7);
+	return {
+		from: ymd(
+			fromD.getUTCFullYear(),
+			fromD.getUTCMonth() + 1,
+			fromD.getUTCDate(),
+		),
+		to: ymd(
+			toD.getUTCFullYear(),
+			toD.getUTCMonth() + 1,
+			toD.getUTCDate(),
+		),
+	};
+}
+
+const PRESETS: DateRangePreset[] = [
+	{ id: "thisWeek", label: "이번주", range: (n) => weekWindow(n) },
+	{ id: "lastWeek", label: "저번주", range: (n) => prevWeekWindow(n) },
+	{ id: "thisMonth", label: "이번달", range: (n) => monthBounds(n, 0) },
+	{ id: "lastMonth", label: "저번달", range: (n) => monthBounds(n, -1) },
+	{
+		id: "all",
+		label: "전체",
+		range: () => ({ from: "0000-01-01", to: "9999-12-31" }),
+	},
+];
+
+function ExportSection() {
+	const toast = useToast();
+	const now = useMemo(() => new Date(), []);
+	const { from: defFrom, to: defTo } = useMemo(
+		() => weekWindow(now),
+		[now],
+	);
+	const [from, setFrom] = useState(defFrom);
+	const [to, setTo] = useState(defTo);
+	const [fmt, setFmt] = useState<ExportFormat>("md");
+	const [busy, setBusy] = useState(false);
+
+	const valid =
+		/^\d{4}-\d{2}-\d{2}$/.test(from) &&
+		/^\d{4}-\d{2}-\d{2}$/.test(to) &&
+		from <= to;
+
+	function applyPreset(r: { from: string; to: string }) {
+		setFrom(r.from);
+		setTo(r.to);
+	}
+
+	function triggerDownload(filename: string, body: string, mime: string) {
+		const blob = new Blob([body], { type: mime });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+		URL.revokeObjectURL(url);
+	}
+
+	async function doExport() {
+		if (!valid || busy) return;
+		setBusy(true);
+		try {
+			const res = await window.api.exportLog(from, to, fmt);
+			if (res.status === 400) {
+				toast(res.body?.error || "기간을 확인하세요");
+				return;
+			}
+			// 빈 결과: 서버가 JSON { ok, count:0 } 로 응답. 다운로드 생략.
+			if (
+				res.body &&
+				typeof res.body === "object" &&
+				res.body.count === 0
+			) {
+				toast("해당 기간에 일지가 없어요");
+				return;
+			}
+			const filename = `i-daily_${from}_${to}.${fmt}`;
+			if (fmt === "md") {
+				triggerDownload(
+					filename,
+					typeof res.body === "string" ? res.body : "",
+					"text/markdown;charset=utf-8",
+				);
+			} else {
+				const body =
+					typeof res.body === "object"
+						? JSON.stringify(res.body, null, 2)
+						: String(res.body || "");
+				triggerDownload(filename, body, "application/json;charset=utf-8");
+			}
+			toast(`내보내기 완료 — ${filename}`);
+		} catch {
+			toast("내보내기 실패");
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	return (
+		<>
+			<h3 className="mt-4 border-t border-line pt-4 text-[15px] font-extrabold text-ink">
+				📤 업무일지 내보내기
+			</h3>
+			<p className="tint-accent m-0 rounded-[10px] px-3.5 py-2.5 text-xs text-ink">
+				선택한 기간의 데일리 업무일지를 마크다운 또는 JSON 파일로
+				내려받습니다. Jira 링크는 설정의 jiraBase 로 생성됩니다.
+			</p>
+
+			<div className="flex flex-col gap-1.5">
+				<span className="text-[13px] font-bold text-ink">기간</span>
+				<div className="flex items-center gap-2">
+					<input
+						type="date"
+						className="input flex-1"
+						value={from}
+						onChange={(e) => setFrom(e.target.value)}
+					/>
+					<span className="text-ink-2">~</span>
+					<input
+						type="date"
+						className="input flex-1"
+						value={to}
+						onChange={(e) => setTo(e.target.value)}
+					/>
+				</div>
+			</div>
+
+			<div className="flex flex-wrap gap-1.5">
+				{PRESETS.map((p) => (
+				<button
+					key={p.id}
+					type="button"
+					className="btn btn-ghost px-2.5 py-1 text-[12px]"
+					onClick={() => applyPreset(p.range(now))}
+				>
+					{p.label}
+				</button>
+			))}
+			</div>
+
+			<div className="flex items-center gap-2">
+				<span className="text-[13px] font-bold text-ink">형식</span>
+				<div className="flex border border-line rounded-[8px] overflow-hidden">
+					<button
+						type="button"
+						className={
+							"px-3 py-1 text-[12.5px] font-semibold transition " +
+							(fmt === "md"
+								? "bg-accent text-accent-ink"
+								: "bg-transparent text-ink-2 hover:text-ink")
+						}
+						onClick={() => setFmt("md")}
+					>
+						Markdown
+					</button>
+					<button
+						type="button"
+						className={
+							"px-3 py-1 text-[12.5px] font-semibold transition " +
+							(fmt === "json"
+								? "bg-accent text-accent-ink"
+								: "bg-transparent text-ink-2 hover:text-ink")
+					}
+					onClick={() => setFmt("json")}
+				>
+						JSON
+					</button>
+				</div>
+				<button
+					type="button"
+					className="btn btn-primary ml-auto"
+					disabled={!valid || busy}
+					onClick={doExport}
+				>
+					{busy ? "내보내는 중…" : "내보내기"}
+				</button>
+			</div>
+		</>
 	);
 }
 
@@ -321,6 +536,8 @@ export function ConfigPane({
 					)}
 					<span className="text-[13px] text-ink-2">{jiraText}</span>
 				</div>
+
+				<ExportSection />
 
 				<McpConnectDocs
 					onCopy={async (text) => {

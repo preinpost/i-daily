@@ -376,3 +376,62 @@ test("appendDailyTasks: list 섹션에 구조화 항목 추가·빈 항목 스�
 	expect(added[0].subs).toEqual(["하위1"]);
 	expect(dailyItemsOf(doc).map((x) => x.desc)).toEqual(["a", "메모만"]);
 });
+
+// ── 업무일지 내보내기(멀티데이 조립) ──
+import {
+	datesInRange,
+	composeExportMarkdown,
+	composeExportJson,
+	type ExportDay,
+} from "../src/shared/model.ts";
+
+function mkDay(date: string, body: string): ExportDay {
+	const doc = parseDoc(body, date, "홍길동");
+	return { date, doc, markdown: serializeDoc(JIRA, doc) };
+}
+
+test("datesInRange: from~to 포함 필터 + 오름차순", () => {
+	const all = ["2026-07-09", "2026-07-10", "2026-07-11", "2026-07-15", "2026-08-01"];
+	expect(datesInRange(all, "2026-07-10", "2026-07-15")).toEqual([
+		"2026-07-10",
+		"2026-07-11",
+		"2026-07-15",
+	]);
+	expect(datesInRange(all, "2026-07-16", "2026-07-31")).toEqual([]);
+});
+
+test("composeExportMarkdown: 제목 헤더 + ## 날짜 섹션 이어붙기", () => {
+	const days = [
+		mkDay(
+			"2026-07-10",
+			"## 데일리 스크럼\n\n**[금일 진행 업무]**\n  + **[backend]**\n    + [OPIT-1](https://x/OPIT-1) 작업\n- 이슈 사항: 없음\n- 협업 및 기타: 없음",
+		),
+		mkDay(
+			"2026-07-11",
+			"## 일일 진행 업무\n- [OPIT-2](https://x/OPIT-2) 배포\n\n## 데일리 스크럼\n\n**[금일 진행 업무]**\n- 이슈 사항: 없음\n- 협업 및 기타: 없음",
+		),
+	];
+	const md = composeExportMarkdown(JIRA, "2026-07-10", "2026-07-11", days);
+	expect(md.startsWith("# i-daily 업무일지 (2026-07-10 ~ 2026-07-11)")).toBe(true);
+	expect(md).toContain("## 2026-07-10");
+	expect(md).toContain("## 2026-07-11");
+	expect(md).toContain("https://jira.test/browse/OPIT-1");
+	expect(md).toContain("https://jira.test/browse/OPIT-2");
+});
+
+test("composeExportJson: 메타 + days 배열 + count", () => {
+	const days = [mkDay("2026-07-10", "## 데일리 스크럼\n\n- 이슈 사항: 없음\n- 협업 및 기타: 없음")];
+	const obj = composeExportJson("2026-07-10", "2026-07-10", days);
+	expect(obj.from).toBe("2026-07-10");
+	expect(obj.to).toBe("2026-07-10");
+	expect(obj.count).toBe(1);
+	expect(obj.days[0].date).toBe("2026-07-10");
+	expect(obj.days[0].doc != null).toBe(true);
+	expect(obj.days[0].markdown).toContain("데일리 스크럼");
+	expect(typeof obj.exportedAt).toBe("string");
+});
+
+test("composeExportMarkdown: 빈 days 면 제목만", () => {
+	const md = composeExportMarkdown(JIRA, "2026-07-01", "2026-07-31", []);
+	expect(md.trim()).toBe("# i-daily 업무일지 (2026-07-01 ~ 2026-07-31)");
+});

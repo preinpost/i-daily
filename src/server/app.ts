@@ -23,6 +23,13 @@ import {
 	jiraTransition,
 	jiraLogout,
 } from "./jira.ts";
+import {
+	serializeDoc,
+	datesInRange,
+	composeExportMarkdown,
+	composeExportJson,
+	type ExportDay,
+} from "../shared/model.ts";
 
 type DB = DrizzleD1Database;
 
@@ -98,6 +105,56 @@ export function buildApp(backend: Backend, db: DB): Hono {
 		}
 		const ok = await deleteWeeklyReport(db, backend.user, from, to);
 		return c.json({ ok }, ok ? 200 : 404);
+	});
+
+	// ── 업무일지 내보내기 ── 기간(from~to, 포함) 내 일지를 md|json 으로 조립.
+	app.get("/api/export", async (c) => {
+		const from = (c.req.query("from") || "").trim();
+		const to = (c.req.query("to") || "").trim();
+		const fmt = (c.req.query("format") || "md").toLowerCase();
+		if (!YMD.test(from) || !YMD.test(to) || from > to) {
+			return c.json(
+				{ ok: false, error: "from/to YYYY-MM-DD 필요(from<=to)" },
+				400,
+			);
+		}
+		if (fmt !== "md" && fmt !== "json") {
+			return c.json({ ok: false, error: "format=md|json" }, 400);
+		}
+		const allDates = await backend.store.list();
+		const dates = datesInRange(allDates, from, to);
+		const cfg = await backend.readConfig();
+		const days: ExportDay[] = [];
+		for (const date of dates) {
+			const doc = await backend.store.get(date);
+			days.push({
+				date,
+				doc,
+				markdown: doc ? serializeDoc(cfg.jiraBase, doc) : "",
+			});
+		}
+		if (!days.length) {
+			return c.json({ ok: true, count: 0, from, to, days: [] });
+		}
+		const filename = `i-daily_${from}_${to}.${fmt}`;
+		const safeName =
+			/^[A-Za-z0-9._-]+$/.test(filename) ? filename : "export.txt";
+		if (fmt === "md") {
+			const body = composeExportMarkdown(cfg.jiraBase, from, to, days);
+			c.header("Content-Type", "text/markdown; charset=utf-8");
+			c.header(
+				"Content-Disposition",
+				`attachment; filename="${safeName}"`,
+			);
+			return c.body(body);
+		}
+		const body = JSON.stringify(composeExportJson(from, to, days), null, 2);
+		c.header("Content-Type", "application/json; charset=utf-8");
+		c.header(
+			"Content-Disposition",
+			`attachment; filename="${safeName}"`,
+		);
+		return c.body(body);
 	});
 
 	// ── Jira REST (로그인/세션은 Better Auth · /api/auth) ──

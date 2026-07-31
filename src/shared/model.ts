@@ -118,6 +118,59 @@ export function ticketUrl(jiraBase: string, key: string): string {
 	return `${path}/${(key || "").trim()}`;
 }
 
+// ───────────────────────── 업무일지 내보내기(멀티데이 조립) ─────────────────────────
+// 기간 내 여러 날의 Doc 을 마크다운/JSON 으로 묶는 순수 함수. 역직렬화 친화.
+export type ExportDay = { date: string; doc: Doc | null; markdown: string };
+
+/** 기간 내 일자들(from~to, 포함) → 오름차순 날짜 리스트. */
+export function datesInRange(
+	allDates: string[],
+	from: string,
+	to: string,
+): string[] {
+	return allDates
+		.filter((d) => d >= from && d <= to)
+		.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/** 여러 날 Doc → 단일 마크다운. 제목 헤더 + 각 날 `## YYYY-MM-DD` + serializeDoc 본문. */
+export function composeExportMarkdown(
+	jiraBase: string,
+	from: string,
+	to: string,
+	days: ExportDay[],
+): string {
+	const L: string[] = [`# i-daily 업무일지 (${from} ~ ${to})`, ""];
+	for (const d of days) {
+		L.push(`## ${d.date}`);
+		L.push("");
+		L.push(d.markdown.trimEnd());
+		L.push("");
+	}
+	return L.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+}
+
+/** 여러 날 Doc → JSON 객체(직렬화는 호출자). Doc 객체 그대로 + markdown 보존. */
+export function composeExportJson(
+	from: string,
+	to: string,
+	days: ExportDay[],
+): {
+	exportedAt: string;
+	from: string;
+	to: string;
+	count: number;
+	days: ExportDay[];
+} {
+	return {
+		exportedAt: new Date().toISOString(),
+		from,
+		to,
+		count: days.length,
+		days,
+	};
+}
+
 // ───────────────────────── 모델 헬퍼 ─────────────────────────
 export const emptyBlock = (): Block => ({
 	spaces: [],
