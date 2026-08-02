@@ -15,8 +15,11 @@ export const ATLASSIAN_EXTRA_SCOPES = [
  * 스코프 변경 후 설정에서 Microsoft **다시 연결** 필요.
  */
 export const MICROSOFT_EXTRA_SCOPES = [
-	// 관리자 동의 가능한 뒤에만 추가. 예:
-	// "https://graph.microsoft.com/Chat.ReadWrite",
+	// Chat.Read / Chat.ReadWrite 는 이 테넌트에서 관리자 승인 필요 → 제외.
+	"https://graph.microsoft.com/Chat.ReadBasic",
+	"https://graph.microsoft.com/TeamsAppInstallation.ReadForChat",
+	// OneDrive 파일 읽기 (엑셀 workbook API 포함). Files.Read.All 은 관리자 승인 → 제외.
+	"https://graph.microsoft.com/Files.Read",
 ] as const;
 
 export const betterAuthOptions = {

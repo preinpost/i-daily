@@ -82,8 +82,14 @@ function parseChats(body: unknown): ChatRow[] {
 	});
 }
 
-// members expand 는 테넌트/스코프에 따라 거절될 수 있어 preview 만.
-const CHATS_PATH = "/me/chats?$top=50&$expand=lastMessagePreview";
+// Chat.ReadBasic 만으로는 lastMessagePreview expand 불가(Chat.Read 필요).
+const CHATS_PATH =
+	"/me/chats?$top=50&$select=id,topic,chatType,createdDateTime,lastUpdatedDateTime";
+
+function installedAppsPath(chatId: string): string {
+	const id = chatId.trim();
+	return `/chats/${encodeURIComponent(id)}/installedApps?$expand=teamsAppDefinition`;
+}
 
 const PRESETS: Preset[] = [
 	{
@@ -105,7 +111,21 @@ const PRESETS: Preset[] = [
 		label: "GET /me/chats",
 		method: "GET",
 		path: CHATS_PATH,
-		hint: "Teams 채팅 목록 (Chat.ReadWrite)",
+		hint: "Teams 채팅 목록 (Chat.ReadBasic)",
+	},
+	{
+		id: "chat-apps",
+		label: "GET chat installedApps",
+		method: "GET",
+		path: "/chats/{chat-id}/installedApps?$expand=teamsAppDefinition",
+		hint: "채팅 설치 앱 (TeamsAppInstallation.ReadForChat)",
+	},
+	{
+		id: "chat-messages",
+		label: "GET chat messages",
+		method: "GET",
+		path: "/chats/{chat-id}/messages?$top=20",
+		hint: "채팅 메시지 (ChatMessage.Read)",
 	},
 	{
 		id: "joined-teams",
@@ -118,8 +138,15 @@ const PRESETS: Preset[] = [
 		id: "drive-root",
 		label: "GET /me/drive/root/children",
 		method: "GET",
-		path: "/me/drive/root/children?$top=20",
-		hint: "OneDrive 루트 (Files.* 필요)",
+		path: "/me/drive/root/children?$top=50",
+		hint: "OneDrive 루트 (Files.Read)",
+	},
+	{
+		id: "drive-xlsx",
+		label: "search .xlsx",
+		method: "GET",
+		path: "/me/drive/root/search(q='.xlsx')?$top=25",
+		hint: "OneDrive 엑셀 검색 (Files.Read)",
 	},
 	{
 		id: "calendar",
@@ -166,9 +193,29 @@ export function MsGraphTestPane({ active }: { active: boolean }) {
 	const [body, setBody] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [chatsBusy, setChatsBusy] = useState(false);
+	const [appsBusy, setAppsBusy] = useState(false);
 	const [result, setResult] = useState<GraphResult>(null);
 	const [chats, setChats] = useState<ChatRow[] | null>(null);
 	const [chatsError, setChatsError] = useState<string | null>(null);
+	const [chatId, setChatId] = useState("");
+	const [appsSummary, setAppsSummary] = useState<string[] | null>(null);
+	const [msgsBusy, setMsgsBusy] = useState(false);
+	const [msgsSummary, setMsgsSummary] = useState<
+		{ who: string; text: string; at: string }[] | null
+	>(null);
+	const [filesBusy, setFilesBusy] = useState(false);
+	const [files, setFiles] = useState<
+		{
+			id: string;
+			name: string;
+			kind: string;
+			size: string;
+			webUrl: string;
+		}[] | null
+	>(null);
+	const [fileId, setFileId] = useState("");
+	const [sheetsBusy, setSheetsBusy] = useState(false);
+	const [sheets, setSheets] = useState<string[] | null>(null);
 	const [history, setHistory] = useState<
 		{ t: number; method: string; path: string; status?: number }[]
 	>([]);
@@ -233,13 +280,283 @@ export function MsGraphTestPane({ active }: { active: boolean }) {
 	}
 
 	function pickChat(c: ChatRow) {
+		setChatId(c.id);
 		// 메시지 목록 path 채움 — 다음 실험용
 		setMethod("GET");
 		setPath(
 			`/chats/${encodeURIComponent(c.id)}/messages?$top=20&$orderby=createdDateTime desc`,
 		);
 		setBody("");
-		toast(`선택: ${c.topic} — 메시지 조회 path 채움`);
+		toast(`선택: ${c.topic} — chat id 채움`);
+	}
+
+	function messagesPaths(id: string): string[] {
+		const enc = encodeURIComponent(id.trim());
+		// $expand 없이. 48:notes 등은 path 별칭이 다를 수 있어 후보 여러 개.
+		return [
+			`/chats/${enc}/messages?$top=20`,
+			`/me/chats/${enc}/messages?$top=20`,
+		];
+	}
+
+	function parseMessagesBody(body: unknown): {
+		who: string;
+		text: string;
+		at: string;
+	}[] {
+		const value = (body as { value?: unknown[] })?.value;
+		const list = Array.isArray(value) ? value : [];
+		return list.map((item) => {
+			const m = item as {
+				createdDateTime?: string;
+				from?: {
+					user?: { displayName?: string };
+					application?: { displayName?: string };
+				};
+				body?: { content?: string; contentType?: string };
+			};
+			const who =
+				m.from?.user?.displayName ||
+				m.from?.application?.displayName ||
+				"(unknown)";
+			const raw = (m.body?.content || "").replace(/<[^>]+>/g, " ");
+			const text = raw.replace(/\s+/g, " ").trim().slice(0, 160);
+			return { who, text, at: m.createdDateTime || "" };
+		});
+	}
+
+	async function loadMessages() {
+		if (msgsBusy) return;
+		if (!st?.connected) {
+			toast("먼저 설정에서 Microsoft를 연결하세요");
+			return;
+		}
+		const id = chatId.trim();
+		if (!id) {
+			toast("chat id 를 입력하세요");
+			return;
+		}
+		setMsgsBusy(true);
+		setMsgsSummary(null);
+		try {
+			const paths = messagesPaths(id);
+			let last: GraphResult = null;
+			for (const p of paths) {
+				const r = (await window.api.microsoft.graph({
+					method: "GET",
+					path: p,
+				})) as GraphResult;
+				last = r;
+				setResult(r);
+				setMethod("GET");
+				setPath(p);
+				if (r?.ok) {
+					const rows = parseMessagesBody(r.body);
+					setMsgsSummary(rows);
+					toast(`메시지 ${rows.length}개 · ${p}`);
+					return;
+				}
+			}
+			const errBody = last?.body as {
+				error?: { message?: string };
+			} | null;
+			const msg =
+				errBody?.error?.message || last?.error || `Graph ${last?.status}`;
+			// 48:notes 는 Graph 메시지 API 미지원인 경우가 많음.
+			const hint =
+				id === "48:notes" || id.startsWith("48:")
+					? " — '나에게' (48:notes) 는 Graph 메시지 목록이 막힌 경우가 많습니다. 목록에서 일반 1:1/그룹 방을 골라 보세요."
+					: "";
+			toast(`messages 실패: ${msg}${hint}`);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			toast("messages 실패: " + msg);
+		} finally {
+			setMsgsBusy(false);
+		}
+	}
+
+	function parseDriveChildren(body: unknown): {
+		id: string;
+		name: string;
+		kind: string;
+		size: string;
+		webUrl: string;
+	}[] {
+		const value = (body as { value?: unknown[] })?.value;
+		const list = Array.isArray(value) ? value : [];
+		return list.map((item) => {
+			const f = item as {
+				id?: string;
+				name?: string;
+				size?: number;
+				webUrl?: string;
+				folder?: unknown;
+				file?: { mimeType?: string };
+			};
+			const name = f.name || "?";
+			const isFolder = !!f.folder;
+			const isXlsx = /\.xlsx?$/i.test(name);
+			const kind = isFolder
+				? "folder"
+				: isXlsx
+					? "excel"
+					: f.file?.mimeType || "file";
+			const size =
+				typeof f.size === "number"
+					? f.size < 1024
+						? `${f.size} B`
+						: f.size < 1024 * 1024
+							? `${(f.size / 1024).toFixed(1)} KB`
+							: `${(f.size / 1024 / 1024).toFixed(1)} MB`
+					: "—";
+			return {
+				id: String(f.id || ""),
+				name,
+				kind,
+				size,
+				webUrl: f.webUrl || "",
+			};
+		});
+	}
+
+	async function loadDrive(pathQuery: string, label: string) {
+		if (filesBusy) return;
+		if (!st?.connected) {
+			toast("먼저 설정에서 Microsoft를 연결하세요");
+			return;
+		}
+		setFilesBusy(true);
+		setSheets(null);
+		try {
+			const r = (await window.api.microsoft.graph({
+				method: "GET",
+				path: pathQuery,
+			})) as GraphResult;
+			setResult(r);
+			setMethod("GET");
+			setPath(pathQuery);
+			if (!r?.ok) {
+				const errBody = r?.body as {
+					error?: { message?: string };
+				} | null;
+				const msg =
+					errBody?.error?.message || r?.error || `Graph ${r?.status}`;
+				setFiles(null);
+				toast(`${label} 실패: ${msg}`);
+				return;
+			}
+			const rows = parseDriveChildren(r.body);
+			setFiles(rows);
+			toast(`${label} ${rows.length}개`);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			toast(`${label} 실패: ` + msg);
+		} finally {
+			setFilesBusy(false);
+		}
+	}
+
+	async function loadWorksheets() {
+		if (sheetsBusy) return;
+		if (!st?.connected) {
+			toast("먼저 설정에서 Microsoft를 연결하세요");
+			return;
+		}
+		const id = fileId.trim();
+		if (!id) {
+			toast("파일 id 를 입력하거나 목록에서 엑셀을 클릭하세요");
+			return;
+		}
+		const p = `/me/drive/items/${encodeURIComponent(id)}/workbook/worksheets`;
+		setSheetsBusy(true);
+		setSheets(null);
+		try {
+			const r = (await window.api.microsoft.graph({
+				method: "GET",
+				path: p,
+			})) as GraphResult;
+			setResult(r);
+			setMethod("GET");
+			setPath(p);
+			if (!r?.ok) {
+				const errBody = r?.body as {
+					error?: { message?: string };
+				} | null;
+				const msg =
+					errBody?.error?.message || r?.error || `Graph ${r?.status}`;
+				toast(`워크시트 실패: ${msg}`);
+				return;
+			}
+			const value = (r.body as { value?: unknown[] })?.value;
+			const list = Array.isArray(value) ? value : [];
+			const names = list.map((item) => {
+				const s = item as { name?: string; id?: string };
+				return s.name || s.id || "?";
+			});
+			setSheets(names);
+			toast(`시트 ${names.length}개`);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			toast("워크시트 실패: " + msg);
+		} finally {
+			setSheetsBusy(false);
+		}
+	}
+
+	async function loadInstalledApps() {
+		if (appsBusy) return;
+		if (!st?.connected) {
+			toast("먼저 설정에서 Microsoft를 연결하세요");
+			return;
+		}
+		const id = chatId.trim();
+		if (!id) {
+			toast("chat id 를 입력하세요 (19:…@thread.v2)");
+			return;
+		}
+		const p = installedAppsPath(id);
+		setAppsBusy(true);
+		setAppsSummary(null);
+		try {
+			const r = (await window.api.microsoft.graph({
+				method: "GET",
+				path: p,
+			})) as GraphResult;
+			setResult(r);
+			setMethod("GET");
+			setPath(p);
+			if (!r?.ok) {
+				const errBody = r?.body as {
+					error?: { message?: string };
+				} | null;
+				const msg =
+					errBody?.error?.message || r?.error || `Graph ${r?.status}`;
+				toast(`installedApps 실패: ${msg}`);
+				return;
+			}
+			const value = (r.body as { value?: unknown[] })?.value;
+			const list = Array.isArray(value) ? value : [];
+			const names = list.map((item) => {
+				const x = item as {
+					teamsAppDefinition?: { displayName?: string; teamsAppId?: string };
+					id?: string;
+				};
+				const n =
+					x.teamsAppDefinition?.displayName ||
+					x.teamsAppDefinition?.teamsAppId ||
+					x.id ||
+					"?";
+				return String(n);
+			});
+			setAppsSummary(names);
+			toast(`설치 앱 ${names.length}개`);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			toast("installedApps 실패: " + msg);
+		} finally {
+			setAppsBusy(false);
+		}
 	}
 
 	async function run() {
@@ -347,6 +664,194 @@ export function MsGraphTestPane({ active }: { active: boolean }) {
 					{statusLine}
 				</p>
 
+				{/* Teams chat installed apps */}
+				<div className="flex flex-col gap-2 rounded-[12px] border border-line bg-panel p-3.5">
+					<div className="flex flex-wrap items-center gap-2">
+						<span className="text-[14px] font-bold text-ink">
+							채팅 상세 (id 기준)
+						</span>
+					</div>
+					<p className="m-0 text-[12.5px] text-ink-2">
+						chat id 는 목록 행 클릭 또는 Teams/Graph의{" "}
+						<code className="rounded bg-bg px-1 font-mono text-[11.5px]">
+							19:…@thread.v2
+						</code>
+						. 스코프 변경 후 Microsoft **다시 연결** 필요.
+					</p>
+					<input
+						className="input font-mono text-[12.5px]"
+						value={chatId}
+						onChange={(e) => setChatId(e.target.value)}
+						placeholder="chat id (19:…@thread.v2)"
+						spellCheck={false}
+					/>
+					<div className="flex flex-wrap gap-2">
+						<button
+							type="button"
+							className="btn btn-primary"
+							disabled={msgsBusy || !st?.connected}
+							onClick={loadMessages}
+						>
+							{msgsBusy ? "조회 중…" : "메시지 읽기 (ChatMessage.Read)"}
+						</button>
+						<button
+							type="button"
+							className="btn btn-ghost"
+							disabled={appsBusy || !st?.connected}
+							onClick={loadInstalledApps}
+						>
+							{appsBusy ? "조회 중…" : "설치 앱 조회"}
+						</button>
+					</div>
+					{msgsSummary && (
+						<div className="max-h-[240px] overflow-auto rounded-[8px] border border-line">
+							<ul className="m-0 list-none space-y-0 p-0">
+								{msgsSummary.length === 0 ? (
+									<li className="px-2.5 py-2 text-[13px] text-ink-2">
+										메시지 없음
+									</li>
+								) : (
+									msgsSummary.map((m, i) => (
+										<li
+											key={`${m.at}-${i}`}
+											className="border-t border-line px-2.5 py-1.5 text-[12.5px] first:border-t-0"
+										>
+											<div className="font-semibold text-ink">{m.who}</div>
+											<div className="text-ink-2">{m.text || "—"}</div>
+											{m.at && (
+												<div className="text-[11px] text-ink-2">{m.at}</div>
+											)}
+										</li>
+									))
+								)}
+							</ul>
+						</div>
+					)}
+					{appsSummary && (
+						<ul className="m-0 list-disc space-y-0.5 pl-5 text-[13px] text-ink">
+							{appsSummary.length === 0 ? (
+								<li className="text-ink-2">설치된 앱 없음</li>
+							) : (
+								appsSummary.map((n) => <li key={n}>{n}</li>)
+							)}
+						</ul>
+					)}
+				</div>
+
+				{/* OneDrive / Excel (Files.Read) */}
+				<div className="flex flex-col gap-2 rounded-[12px] border border-line bg-panel p-3.5">
+					<div className="flex flex-wrap items-center gap-2">
+						<span className="text-[14px] font-bold text-ink">
+							OneDrive / Excel (Files.Read)
+						</span>
+					</div>
+					<p className="m-0 text-[12.5px] text-ink-2">
+						스코프에 Files.Read 추가 후 Microsoft **다시 연결**. 엑셀 행
+						클릭 → 파일 id 채움 → 워크시트 목록.
+					</p>
+					<div className="flex flex-wrap gap-2">
+						<button
+							type="button"
+							className="btn btn-primary"
+							disabled={filesBusy || !st?.connected}
+							onClick={() =>
+								loadDrive(
+									"/me/drive/root/children?$top=50",
+									"루트",
+								)
+							}
+						>
+							{filesBusy ? "불러오는 중…" : "루트 목록"}
+						</button>
+						<button
+							type="button"
+							className="btn btn-ghost"
+							disabled={filesBusy || !st?.connected}
+							onClick={() =>
+								loadDrive(
+									"/me/drive/root/search(q='.xlsx')?$top=25",
+									"xlsx 검색",
+								)
+							}
+						>
+							.xlsx 검색
+						</button>
+					</div>
+					{files && files.length === 0 && (
+						<p className="m-0 text-[13px] text-ink-2">항목 없음</p>
+					)}
+					{files && files.length > 0 && (
+						<div className="max-h-[240px] overflow-auto rounded-[8px] border border-line">
+							<table className="w-full border-collapse text-left text-[12.5px]">
+								<thead className="sticky top-0 bg-panel-2 text-ink-2">
+									<tr>
+										<th className="px-2.5 py-1.5 font-semibold">이름</th>
+										<th className="px-2.5 py-1.5 font-semibold">종류</th>
+										<th className="px-2.5 py-1.5 font-semibold">크기</th>
+									</tr>
+								</thead>
+								<tbody>
+									{files.map((f) => (
+										<tr
+											key={f.id}
+											className="cursor-pointer border-t border-line hover:bg-bg"
+											title={f.id}
+											onClick={() => {
+												if (f.kind === "folder") {
+													loadDrive(
+														`/me/drive/items/${encodeURIComponent(f.id)}/children?$top=50`,
+														`폴더 ${f.name}`,
+													);
+													return;
+												}
+												setFileId(f.id);
+												toast(`선택: ${f.name}`);
+											}}
+										>
+											<td className="max-w-[240px] truncate px-2.5 py-1.5 font-medium text-ink">
+												{f.kind === "excel" ? "📊 " : ""}
+												{f.name}
+											</td>
+											<td className="whitespace-nowrap px-2.5 py-1.5 text-ink-2">
+												{f.kind}
+											</td>
+											<td className="whitespace-nowrap px-2.5 py-1.5 text-ink-2">
+												{f.size}
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					)}
+					<div className="flex flex-wrap items-center gap-2">
+						<input
+							className="input min-w-0 flex-1 font-mono text-[12.5px]"
+							value={fileId}
+							onChange={(e) => setFileId(e.target.value)}
+							placeholder="drive item id (엑셀 파일)"
+							spellCheck={false}
+						/>
+						<button
+							type="button"
+							className="btn btn-primary shrink-0"
+							disabled={sheetsBusy || !st?.connected}
+							onClick={loadWorksheets}
+						>
+							{sheetsBusy ? "조회 중…" : "시트 목록"}
+						</button>
+					</div>
+					{sheets && (
+						<ul className="m-0 list-disc space-y-0.5 pl-5 text-[13px] text-ink">
+							{sheets.length === 0 ? (
+								<li className="text-ink-2">시트 없음</li>
+							) : (
+								sheets.map((n) => <li key={n}>{n}</li>)
+							)}
+						</ul>
+					)}
+				</div>
+
 				{/* Teams chats */}
 				<div className="flex flex-col gap-2 rounded-[12px] border border-line bg-panel p-3.5">
 					<div className="flex flex-wrap items-center gap-2">
@@ -366,9 +871,7 @@ export function MsGraphTestPane({ active }: { active: boolean }) {
 						<code className="rounded bg-bg px-1 font-mono text-[11.5px]">
 							GET /me/chats
 						</code>{" "}
-						— Azure에 Chat.ReadWrite 동의 후에도, 토큰에 스코프가 없으면
-						실패합니다. 스코프 변경 후 설정에서 Microsoft **다시 연결**
-						하세요. 행을 누르면 메시지 조회 path가 채워집니다.
+						— Chat.ReadBasic 필요. 행 클릭 시 위 chat id 칸에 채워집니다.
 					</p>
 					{chatsError && (
 						<p className="tint-accent m-0 rounded-[8px] px-3 py-2 text-[12.5px] text-ink">
