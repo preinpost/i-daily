@@ -164,6 +164,19 @@ Jira 연동(=로그인)에 필요한 OAuth 2.0 (3LO) 클라이언트 `client_id`
 - 기타 env: `JIRA_REDIRECT_URI`(레거시 콜백 URL 고정).
 - 미설정 시 로그인 페이지에 "서버에 Jira OAuth 클라이언트가 설정되지 않았습니다" 경고가 뜨고 로그인 버튼이 비활성화된다(정상 동작). 둘 등록하면 새로고침만으로 사라진다.
 
+### Microsoft Graph (보조 연결 — 로그인 대체 아님)
+
+로그인은 Atlassian 그대로다. Excel·Teams 등 Graph API 기능용으로 Microsoft 계정을 **설정 탭에서 link** 한다. 토큰은 Better Auth `account` 테이블에 저장되며, 서버는 `getMicrosoftAccessToken` / `graphFetch` (`src/server/microsoft.ts`) 로 호출한다.
+
+- 로컬: `.dev.vars` 에 `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` / (선택) `MICROSOFT_TENANT_ID`
+- 배포: `npx wrangler secret put MICROSOFT_CLIENT_ID` 등
+- Azure 앱 Redirect URI (Web):
+  - 로컬: `http://localhost:5173/api/auth/callback/microsoft`
+  - 운영: `https://i-daily.<subdomain>.workers.dev/api/auth/callback/microsoft`
+- Delegated permissions: 우선 `User.Read`(+ BA 기본 `openid`/`offline_access`)만. Excel·Teams 스코프는 기능 추가 시 `MICROSOFT_EXTRA_SCOPES`와 Azure permissions를 같이 늘린다.
+- 회사 테넌트는 **사용자 동의 자체가 막혀** 있으면 `User.Read`만 있어도 “관리자 승인 필요”가 뜬다 → Entra 관리자에게 앱 동의 요청, 또는 Enterprise applications 사용자 동의 정책 확인.
+- `MICROSOFT_TENANT_ID` 기본값 코드 쪽은 `organizations`(회사 계정). 단일 테넌트면 GUID 권장.
+
 ### Better Auth (웹 세션 + MCP OAuth 인가서버)
 
 웹 로그인과 MCP OAuth 를 모두 Better Auth 가 담당한다. **배포 전 secret 2개를 반드시 등록**해야 한다.

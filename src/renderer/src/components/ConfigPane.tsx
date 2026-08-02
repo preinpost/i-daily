@@ -10,6 +10,14 @@ type JiraStatus = {
 	siteUrl?: string;
 } | null;
 
+type MsStatus = {
+	connected?: boolean;
+	configured?: boolean;
+	displayName?: string;
+	email?: string;
+	error?: string;
+} | null;
+
 /** 운영 MCP endpoint — OAuth resource(aud) 와 동일. */
 const MCP_URL = "https://i-daily.dl-inje-dev-services.workers.dev/mcp";
 
@@ -442,24 +450,47 @@ export function ConfigPane({
 }) {
 	const toast = useToast();
 	const [js, setJs] = useState<JiraStatus>(null);
+	const [ms, setMs] = useState<MsStatus>(null);
 	const [me, setMe] = useState<{ user: string; isSetup: boolean } | null>(null);
+	const [msBusy, setMsBusy] = useState(false);
 
-	async function refreshJira() {
+	async function refreshIntegrations() {
 		const j = window.api?.jira;
+		const m = window.api?.microsoft;
 		const meApi = window.api?.me;
 		if (!j) return;
 		try {
-			const [st, mi] = await Promise.all([j.status(), meApi ? meApi() : null]);
+			const [st, mi, mst] = await Promise.all([
+				j.status(),
+				meApi ? meApi() : null,
+				m ? m.status() : null,
+			]);
 			setJs(st);
 			setMe(mi);
+			setMs(mst);
 		} catch {
 			setJs(null);
 			setMe(null);
+			setMs(null);
 		}
 	}
 	useEffect(() => {
-		if (active) refreshJira();
+		if (active) refreshIntegrations();
 	}, [active]);
+
+	// Microsoft link 콜백(?ms=linked) 토스트 1회.
+	useEffect(() => {
+		const q = new URLSearchParams(location.search);
+		if (q.get("ms") !== "linked") return;
+		toast("Microsoft 계정 연결됨");
+		q.delete("ms");
+		const next =
+			location.pathname +
+			(q.toString() ? `?${q}` : "") +
+			location.hash;
+		history.replaceState(null, "", next);
+		refreshIntegrations();
+	}, []);
 
 	async function connect() {
 		const j = window.api?.jira;
@@ -470,7 +501,7 @@ export function ConfigPane({
 			r = await j.connect();
 		} catch {
 			toast("Jira 연결 실패");
-			refreshJira();
+			refreshIntegrations();
 			return;
 		}
 		if (r && r.replaced) return; // 재시도로 대체됨
@@ -479,7 +510,7 @@ export function ConfigPane({
 				? "Jira 연결됨"
 				: "Jira 연결 실패: " + ((r && r.error) || "알 수 없음"),
 		);
-		refreshJira();
+		refreshIntegrations();
 	}
 	async function logout() {
 		try {
@@ -488,8 +519,48 @@ export function ConfigPane({
 		} catch {
 			/* noop */
 		}
-		// 로그아웃아웃 = 세션 만료 → user 가 setup 으로 복귀. 새 상태로 재부팅.
+		// 로그아웃 = 세션 만료 → user 가 setup 으로 복귀. 새 상태로 재부팅.
 		location.reload();
+	}
+
+	async function connectMicrosoft() {
+		const m = window.api?.microsoft;
+		if (!m) return;
+		if (me?.isSetup !== false) {
+			toast("먼저 Jira(Atlassian)로 로그인하세요");
+			return;
+		}
+		setMsBusy(true);
+		try {
+			const r = await m.connect();
+			if (!r?.ok) {
+				toast("Microsoft 연결 실패: " + (r?.error || "알 수 없음"));
+			}
+			// ok 면 location.href 로 떠남
+		} catch {
+			toast("Microsoft 연결 실패");
+		} finally {
+			setMsBusy(false);
+		}
+	}
+
+	async function disconnectMicrosoft() {
+		const m = window.api?.microsoft;
+		if (!m) return;
+		setMsBusy(true);
+		try {
+			const r = await m.disconnect();
+			toast(
+				r?.ok
+					? "Microsoft 연결 해제됨"
+					: "해제 실패: " + (r?.error || "알 수 없음"),
+			);
+			await refreshIntegrations();
+		} catch {
+			toast("Microsoft 연결 해제 실패");
+		} finally {
+			setMsBusy(false);
+		}
 	}
 
 	const jiraText = !js
@@ -504,6 +575,17 @@ export function ConfigPane({
 		: me?.isSetup === false
 			? "🔗 로그인"
 			: "🔗 Jira 연결";
+
+	const msText = !ms
+		? "—"
+		: ms.connected
+			? "✅ 연결됨" +
+				(ms.displayName || ms.email
+					? ` — ${ms.displayName || ""}${ms.email ? ` <${ms.email}>` : ""}`
+					: "")
+			: ms.configured
+				? "미연결 — Excel·Teams Graph 용"
+				: "서버에 Microsoft OAuth 클라이언트가 설정되지 않음(관리자)";
 
 	return (
 		<div
@@ -535,6 +617,43 @@ export function ConfigPane({
 						</button>
 					)}
 					<span className="text-[13px] text-ink-2">{jiraText}</span>
+				</div>
+
+				<h3 className="mt-4 border-t border-line pt-4 text-[15px] font-bold text-ink">
+					Microsoft 연동
+				</h3>
+				<p className="m-0 text-[13px] leading-relaxed text-ink-2">
+					로그인은 Jira(Atlassian) 그대로입니다. Microsoft 계정은 Excel 시트
+					수정·Teams 메시지 전송 등 Graph API 기능용으로만 연결합니다.
+				</p>
+				<div className="mt-1 flex flex-wrap items-center gap-3">
+					<button
+						type="button"
+						className="btn btn-primary"
+						onClick={connectMicrosoft}
+						disabled={
+							msBusy ||
+							ms?.configured === false ||
+							me?.isSetup !== false
+						}
+					>
+						{msBusy
+							? "이동 중…"
+							: ms?.connected
+								? "🔄 다시 연결"
+								: "🔗 Microsoft 연결"}
+					</button>
+					{ms?.connected && (
+						<button
+							type="button"
+							className="btn btn-ghost"
+							onClick={disconnectMicrosoft}
+							disabled={msBusy}
+						>
+							연결 해제
+						</button>
+					)}
+					<span className="text-[13px] text-ink-2">{msText}</span>
 				</div>
 
 				<ExportSection />

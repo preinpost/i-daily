@@ -5,7 +5,11 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq, and } from "drizzle-orm";
 import { jwt } from "better-auth/plugins";
 import { oauthProvider } from "@better-auth/oauth-provider";
-import { betterAuthOptions, ATLASSIAN_EXTRA_SCOPES } from "./options.ts";
+import {
+	betterAuthOptions,
+	ATLASSIAN_EXTRA_SCOPES,
+	MICROSOFT_EXTRA_SCOPES,
+} from "./options.ts";
 import * as authSchema from "./schema.ts";
 import {
 	writeJiraAuth,
@@ -91,6 +95,37 @@ export function createAuth(env: Env) {
 						`${profile.account_id.replaceAll(":", "_")}@users.atlassian.local`,
 					name: profile.name || profile.account_id,
 				}),
+			},
+			// 로그인 대체 아님 — 설정 탭에서 link-social 로 Graph 토큰만 연결.
+			microsoft: {
+				clientId: (env.MICROSOFT_CLIENT_ID || "").trim(),
+				clientSecret: (env.MICROSOFT_CLIENT_SECRET || "").trim(),
+				tenantId: (env.MICROSOFT_TENANT_ID || "organizations").trim() || "organizations",
+				// User.Read 는 graph URI 로 명시(액세스 토큰 aud=Graph).
+				// prompt:consent 는 매 연결마다 동의 화면을 강제 → 사용자 동의 금지
+				// 테넌트에선 곧바로 「관리자 승인 필요」가 된다. 계정 선택만.
+				disableDefaultScope: true,
+				scope: [
+					"openid",
+					"profile",
+					"email",
+					"offline_access",
+					"https://graph.microsoft.com/User.Read",
+					...MICROSOFT_EXTRA_SCOPES,
+				],
+				prompt: "select_account",
+				mapProfileToUser: (profile) => {
+					const id = String(profile.oid || profile.sub || "unknown");
+					const email =
+						profile.email ||
+						profile.preferred_username ||
+						profile.upn ||
+						`${id.replaceAll(":", "_")}@users.microsoft.local`;
+					return {
+						email,
+						name: profile.name || profile.preferred_username || id,
+					};
+				},
 			},
 		},
 		databaseHooks: {

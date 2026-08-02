@@ -6,6 +6,7 @@ import { TopHeader } from "./components/TopHeader";
 import { DayCard } from "./components/DayCard";
 import { TicketsPane } from "./components/TicketsPane";
 import { ConfigPane } from "./components/ConfigPane";
+import { MsGraphTestPane } from "./components/MsGraphTestPane";
 import { Login } from "./components/Login";
 import { WeeklyReportPane } from "./components/WeeklyReportPane";
 import { api } from "./lib/api";
@@ -35,7 +36,12 @@ export function App() {
 	const [view, setView] = useState<View>(() => {
 		const qs = new URLSearchParams(location.search);
 		const v = qs.get("view");
-		return v === "tickets" || v === "report" || v === "config" ? v : "log";
+		return v === "tickets" ||
+			v === "report" ||
+			v === "config" ||
+			v === "ms"
+			? v
+			: "log";
 	});
 	const [meta, setMeta] = useState<Meta>({
 		today: null,
@@ -443,6 +449,7 @@ export function App() {
 
 			<TicketsPane active={view === "tickets"} />
 			<WeeklyReportPane active={view === "report"} />
+			<MsGraphTestPane active={view === "ms"} />
 			<ConfigPane active={view === "config"} firstRun={firstRun} />
 
 			<datalist id="spaceList">

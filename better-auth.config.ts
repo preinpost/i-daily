@@ -8,7 +8,11 @@ import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import { jwt } from "better-auth/plugins";
 import { oauthProvider } from "@better-auth/oauth-provider";
-import { betterAuthOptions, ATLASSIAN_EXTRA_SCOPES } from "./src/auth/options.ts";
+import {
+	betterAuthOptions,
+	ATLASSIAN_EXTRA_SCOPES,
+	MICROSOFT_EXTRA_SCOPES,
+} from "./src/auth/options.ts";
 import * as authSchema from "./src/auth/schema.ts";
 
 // CLI 전용: 로컬 더미 DB. 스키마 생성만 목적.
@@ -28,6 +32,21 @@ export const auth = betterAuth({
 			clientId: process.env.JIRA_CLIENT_ID || "cli",
 			clientSecret: process.env.JIRA_CLIENT_SECRET || "cli",
 			scope: [...ATLASSIAN_EXTRA_SCOPES],
+		},
+		microsoft: {
+			clientId: process.env.MICROSOFT_CLIENT_ID || "cli",
+			clientSecret: process.env.MICROSOFT_CLIENT_SECRET || "cli",
+			tenantId: process.env.MICROSOFT_TENANT_ID || "organizations",
+			disableDefaultScope: true,
+			prompt: "select_account",
+			scope: [
+				"openid",
+				"profile",
+				"email",
+				"offline_access",
+				"https://graph.microsoft.com/User.Read",
+				...MICROSOFT_EXTRA_SCOPES,
+			],
 		},
 	},
 	plugins: [

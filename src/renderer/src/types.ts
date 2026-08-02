@@ -58,6 +58,33 @@ export type Api = {
 		) => Promise<{ ok: boolean; key?: string; name?: string; error?: string }>;
 	};
 	me: () => Promise<{ user: string; isSetup: boolean } | null>;
+	/** Microsoft Graph 보조 연결(Atlassian 로그인 유지). */
+	microsoft: {
+		status: () => Promise<{
+			configured?: boolean;
+			connected?: boolean;
+			displayName?: string;
+			email?: string;
+			scopes?: string[];
+			error?: string;
+		} | null>;
+		connect: () => Promise<{ ok: boolean; error?: string }>;
+		disconnect: () => Promise<{ ok: boolean; error?: string }>;
+		/** 서버 프록시 Graph 호출(테스트 탭). */
+		graph: (opts: {
+			method?: string;
+			path: string;
+			body?: unknown;
+			headers?: Record<string, string>;
+		}) => Promise<{
+			ok: boolean;
+			status: number;
+			url?: string;
+			ms?: number;
+			body: unknown;
+			error?: string;
+		}>;
+	};
 	agent: {
 		generate: (opts?: unknown) => Promise<any>;
 	};

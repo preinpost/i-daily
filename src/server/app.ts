@@ -24,6 +24,12 @@ import {
 	jiraLogout,
 } from "./jira.ts";
 import {
+	microsoftStatus,
+	microsoftDisconnect,
+	microsoftGraphProxy,
+} from "./microsoft.ts";
+import type { AppAuth } from "../auth/index.ts";
+import {
 	serializeDoc,
 	datesInRange,
 	composeExportMarkdown,
@@ -33,9 +39,19 @@ import {
 
 type DB = DrizzleD1Database;
 
+/** Microsoft Graph 등 auth/env 가 필요한 라우트용(테스트에서는 생략 가능). */
+export type AppAuthDeps = {
+	env: Env;
+	auth: AppAuth;
+};
+
 // 워커 엔트리가 요청마다 새 앱을 만들어 (이미 인증된) backend 와 db 를 직접 건네준다.
 // 도메인 라우트(jira)는 토큰 저장을 위해 Drizzle db 도 함께 받는다.
-export function buildApp(backend: Backend, db: DB): Hono {
+export function buildApp(
+	backend: Backend,
+	db: DB,
+	authDeps?: AppAuthDeps,
+): Hono {
 	const app = new Hono();
 
 	// ── 주간보고 ── 결정적 집계.
@@ -197,6 +213,39 @@ export function buildApp(backend: Backend, db: DB): Hono {
 		// jira_auth 만 정리. 세션 쿠키는 클라이언트가 /api/auth/sign-out 으로 끊는다.
 		const r = await jiraLogout(backend, db);
 		return c.json(r);
+	});
+
+	// ── Microsoft Graph (보조 연결 — 로그인 대체 아님) ──
+	// 연결 시작은 클라이언트가 /api/auth/link-social { provider:"microsoft" }.
+	app.get("/api/microsoft/status", async (c) => {
+		if (!authDeps) {
+			return c.json({ configured: false, connected: false });
+		}
+		return c.json(
+			await microsoftStatus(authDeps.env, authDeps.auth, c.req.raw),
+		);
+	});
+	app.post("/api/microsoft/disconnect", async (c) => {
+		if (!authDeps) {
+			return c.json({ ok: false, error: "auth unavailable" }, 503);
+		}
+		return c.json(
+			await microsoftDisconnect(authDeps.env, authDeps.auth, c.req.raw),
+		);
+	});
+	// Graph 테스트/실험 프록시 — graph.microsoft.com 만.
+	app.post("/api/microsoft/graph", async (c) => {
+		if (!authDeps) {
+			return c.json({ ok: false, status: 503, body: null, error: "auth unavailable" }, 503);
+		}
+		const b = (await c.req.json().catch(() => ({}))) as {
+			method?: string;
+			path?: string;
+			body?: unknown;
+			headers?: Record<string, string>;
+		};
+		const r = await microsoftGraphProxy(authDeps.auth, c.req.raw, b);
+		return c.json(r, (r.status >= 400 && r.status < 600 ? r.status : 200) as 200);
 	});
 
 	// ── 로그인 상태 ── 현재 user(세션)와 setup 여부.

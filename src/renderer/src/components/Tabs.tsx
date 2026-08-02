@@ -1,4 +1,4 @@
-export type View = "log" | "tickets" | "report" | "config";
+export type View = "log" | "tickets" | "report" | "ms" | "config";
 
 export function Tabs({
 	view,
@@ -28,6 +28,7 @@ export function Tabs({
 				{tab("log", "업무일지")}
 				{tab("tickets", "내 티켓", "내게 할당된 Jira 티켓")}
 				{tab("report", "주간보고", "전주 금~금주 목 주간업무보고 생성")}
+				{tab("ms", "Graph 테스트", "Microsoft Graph 실험/디버그")}
 				<div className="flex-1" />
 				<button
 					type="button"

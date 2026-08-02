@@ -8,6 +8,17 @@ export const ATLASSIAN_EXTRA_SCOPES = [
 	"read:me",
 ] as const;
 
+/**
+ * Microsoft Graph — BA/명시 스코프 위에 추가.
+ * 회사 테넌트가 사용자 동의를 막아 두면, 여기 넣는 권한마다 관리자 동의가 필요하다.
+ * Chat/Files 등은 관리자 동의 받은 뒤에만 추가할 것.
+ * 스코프 변경 후 설정에서 Microsoft **다시 연결** 필요.
+ */
+export const MICROSOFT_EXTRA_SCOPES = [
+	// 관리자 동의 가능한 뒤에만 추가. 예:
+	// "https://graph.microsoft.com/Chat.ReadWrite",
+] as const;
+
 export const betterAuthOptions = {
 	appName: "i-daily",
 	basePath: "/api/auth",
@@ -15,7 +26,13 @@ export const betterAuthOptions = {
 	account: {
 		accountLinking: {
 			enabled: true,
-			trustedProviders: ["atlassian"],
+			// BA link 조건: trusted 이거나 provider emailVerified.
+			// Entra ID 토큰은 email_verified 가 자주 비어 untrusted 면
+			// "Unable to link account - untrusted provider" 로 콜백이 실패한다.
+			// Microsoft 는 UI 상 link-social 전용(로그인 버튼 없음).
+			// Atlassian 가짜 로컬 이메일 ↔ 회사 MS 메일 불일치 허용.
+			trustedProviders: ["atlassian", "microsoft"],
+			allowDifferentEmails: true,
 		},
 	},
 } satisfies BetterAuthOptions;

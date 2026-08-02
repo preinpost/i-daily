@@ -38,12 +38,28 @@ async function put(path: string, body?: unknown): Promise<any> {
 	return (await request("PUT", path, body)).body;
 }
 
-// Atlassian 인가 URL 만 신뢰(window.open open-redirect 방지).
+// OAuth 인가 URL 만 신뢰(location.href open-redirect 방지).
 // 정규식 대신 URL 호스트 비교 — 검증 의도가 정적 분석에도 드러난다.
 const isAtlassianAuthorize = (u: string): boolean => {
 	try {
 		const x = new URL(u);
 		return x.protocol === "https:" && x.hostname === "auth.atlassian.com";
+	} catch {
+		return false;
+	}
+};
+
+const isMicrosoftAuthorize = (u: string): boolean => {
+	try {
+		const x = new URL(u);
+		// login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize
+		// CIAM: *.ciamlogin.com
+		return (
+			x.protocol === "https:" &&
+			(x.hostname === "login.microsoftonline.com" ||
+				x.hostname.endsWith(".microsoftonline.com") ||
+				x.hostname.endsWith(".ciamlogin.com"))
+		);
 	} catch {
 		return false;
 	}
@@ -89,6 +105,36 @@ export const webApi: Api = {
 			post("/api/jira/transition", { key, transitionId }),
 	},
 	me: () => get("/api/me"),
+	microsoft: {
+		status: () => get("/api/microsoft/status"),
+		connect: async () => {
+			// 이미 Atlassian 세션이 있을 때 account link (sign-in 아님).
+			const r = await fetch("/api/auth/link-social", {
+				method: "POST",
+				credentials: "include",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					provider: "microsoft",
+					callbackURL: "/?ms=linked",
+				}),
+			});
+			const j = (await r.json().catch(() => ({}))) as {
+				url?: string;
+				error?: string;
+				message?: string;
+			};
+			if (j.url && isMicrosoftAuthorize(j.url)) {
+				location.href = j.url;
+				return { ok: true };
+			}
+			return {
+				ok: false,
+				error: j.message || j.error || `link-social failed (${r.status})`,
+			};
+		},
+		disconnect: () => post("/api/microsoft/disconnect"),
+		graph: (opts) => post("/api/microsoft/graph", opts),
+	},
 	agent: {
 		generate: (opts?: unknown) => post("/api/agent/generate", opts),
 	},

@@ -23,6 +23,22 @@ JIRA_REDIRECT_URI=http://localhost:5173/api/jira/callback
 BETTER_AUTH_URL=http://localhost:5173
 BETTER_AUTH_SECRET=dev-secret-at-least-32-characters-long!!
 
+# Microsoft Entra ID (Azure AD) — Graph 보조 연결(로그인 대체 아님).
+# portal.azure.com → App registrations → New registration
+#  - Supported account types: 조직 디렉터리(단일/다중) 권장
+#  - Redirect URI (Web):
+#      http://localhost:5173/api/auth/callback/microsoft
+#      https://i-daily.<subdomain>.workers.dev/api/auth/callback/microsoft
+#  - Certificates & secrets → client secret
+#  - API permissions (Delegated): User.Read 만으로 연결 테스트 가능
+#      (openid/profile/email/offline_access 는 BA 기본 요청)
+#  - Excel/Teams 는 나중에 MICROSOFT_EXTRA_SCOPES + Azure 권한 동시 추가
+#  - 회사 테넌트가 사용자 동의를 막으면 User.Read 만으로도 관리자 승인 필요
+# MICROSOFT_TENANT_ID: 테넌트 GUID | organizations(기본) | common | consumers
+MICROSOFT_CLIENT_ID=
+MICROSOFT_CLIENT_SECRET=
+MICROSOFT_TENANT_ID=organizations
+
 # (선택) config 초기값 — 공개 배포 시 비움. user 가 설정 탭에서 덮어씀.
 # OWNER=
 # JIRA_BASE=

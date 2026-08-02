@@ -8,6 +8,12 @@ interface Env {
 	/** (레거시) 예전 /api/jira/callback 고정값. BA 콜백은 /api/auth/callback/atlassian. */
 	JIRA_REDIRECT_URI?: string;
 
+	// Microsoft Entra ID — Graph 보조 연결(로그인 대체 아님). Better Auth socialProviders.microsoft.
+	MICROSOFT_CLIENT_ID?: string;
+	MICROSOFT_CLIENT_SECRET?: string;
+	/** 테넌트 GUID | organizations | common | consumers. 기본 organizations(회사 계정). */
+	MICROSOFT_TENANT_ID?: string;
+
 	/** Better Auth 공개 base URL (예: https://i-daily….workers.dev). 비우면 localhost 기본. */
 	BETTER_AUTH_URL?: string;
 	/** Better Auth 서명 시크릿(≥32자). */
