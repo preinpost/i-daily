@@ -787,9 +787,9 @@
   text-overflow: clip;
 }
 
-/* 본문 */
+/* 본문 — 초기 높이는 답답하지 않게 12줄 정도(288px). 엔터로 계속 늘어난다. */
 .md-editor {
-  min-height: 76px;
+  min-height: 288px;
   background: var(--panel);
   padding: 9px 11px;
   font-size: 14px;
