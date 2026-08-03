@@ -16,7 +16,12 @@ import {
 	parseTeamsPaste,
 	parseTeamsTaskLine,
 } from "../src/shared/model.ts";
-import { kanbanColumns, priorityLevel } from "../src/renderer/src/lib/model.ts";
+import {
+	kanbanColumns,
+	moveArrayItem,
+	moveItemToSpaceEnd,
+	priorityLevel,
+} from "../src/renderer/src/lib/model.ts";
 
 // jiraBase 는 렌더 함수에 인자로 전달(전역 아님). host만 — /browse/ 는 자동.
 const JIRA = "https://jira.test";
@@ -530,4 +535,42 @@ test("composeExportJson: 메타 + days 배열 + count", () => {
 test("composeExportMarkdown: 빈 days 면 제목만", () => {
 	const md = composeExportMarkdown(JIRA, "2026-07-01", "2026-07-31", []);
 	expect(md.trim()).toBe("# i-daily 업무일지 (2026-07-01 ~ 2026-07-31)");
+});
+
+// ── DnD 순서 이동: 마지막 행 "뒤에" 놓으면 맨 끝으로 ──
+test("moveArrayItem: after last → 맨 끝 (예전 before-only 로는 불가)", () => {
+	const a = ["a", "b", "c", "d", "e"];
+	expect(moveArrayItem(a, 0, 4, "after")).toBe(true);
+	expect(a).toEqual(["b", "c", "d", "e", "a"]);
+});
+
+test("moveArrayItem: before mid / after mid", () => {
+	const before = ["a", "b", "c", "d"];
+	expect(moveArrayItem(before, 3, 1, "before")).toBe(true);
+	expect(before).toEqual(["a", "d", "b", "c"]);
+
+	const after = ["a", "b", "c", "d"];
+	expect(moveArrayItem(after, 0, 1, "after")).toBe(true);
+	expect(after).toEqual(["b", "a", "c", "d"]);
+});
+
+test("moveArrayItem: 같은 칸 before/after 는 no-op", () => {
+	const a = ["a", "b", "c"];
+	expect(moveArrayItem(a, 1, 1, "before")).toBe(false);
+	expect(moveArrayItem(a, 1, 1, "after")).toBe(false);
+	expect(a).toEqual(["a", "b", "c"]);
+});
+
+test("moveItemToSpaceEnd: 같은 스페이스 맨 끝으로", () => {
+	const items = [
+		{ done: false, key: "A", desc: "", space: "S", subs: [] },
+		{ done: false, key: "B", desc: "", space: "S", subs: [] },
+		{ done: false, key: "C", desc: "", space: "S", subs: [] },
+		{ done: false, key: "X", desc: "", space: "Other", subs: [] },
+	];
+	expect(moveItemToSpaceEnd(items, 0, "S")).toBe(true);
+	expect(items.map((it) => it.key)).toEqual(["B", "C", "A", "X"]);
+	// 이미 해당 스페이스 마지막이면 no-op
+	expect(moveItemToSpaceEnd(items, 2, "S")).toBe(false);
+	expect(items.map((it) => it.key)).toEqual(["B", "C", "A", "X"]);
 });

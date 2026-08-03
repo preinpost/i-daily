@@ -347,3 +347,56 @@ export function moveItemToSpace(
 	it.space = (spaceLabel || "").trim();
 	return true;
 }
+
+// 배열 안 순서 이동 — place=before|after 로 목표 인덱스 기준 삽입.
+// (before만 쓰면 마지막 행에 드롭해도 맨 끝이 될 수 없음)
+export function moveArrayItem<T>(
+	arr: T[],
+	from: number,
+	target: number,
+	place: "before" | "after" = "before",
+): boolean {
+	if (from < 0 || from >= arr.length || target < 0 || target >= arr.length) {
+		return false;
+	}
+	if (place === "before" && from === target) return false;
+	if (place === "after" && from === target) return false;
+	const [moved] = arr.splice(from, 1);
+	const insertAt =
+		place === "before"
+			? from < target
+				? target - 1
+				: target
+			: from < target
+				? target
+				: target + 1;
+	arr.splice(insertAt, 0, moved);
+	return true;
+}
+
+// 같은(또는 지정) 스페이스의 맨 끝으로 이동 — 스페이스 빈 영역 드롭용.
+export function moveItemToSpaceEnd(
+	items: ListItem[],
+	fromIndex: number,
+	spaceLabel: string,
+): boolean {
+	const it = items[fromIndex];
+	if (!it) return false;
+	const space = (spaceLabel || "").trim();
+	let lastInSpace = -1;
+	for (let i = 0; i < items.length; i++) {
+		if ((items[i].space || "").trim() === space) lastInSpace = i;
+	}
+	if (fromIndex === lastInSpace) {
+		it.space = space;
+		return false;
+	}
+	const [moved] = items.splice(fromIndex, 1);
+	moved.space = space;
+	lastInSpace = -1;
+	for (let i = 0; i < items.length; i++) {
+		if ((items[i].space || "").trim() === space) lastInSpace = i;
+	}
+	items.splice(lastInSpace + 1, 0, moved);
+	return true;
+}
