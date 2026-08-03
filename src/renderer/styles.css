@@ -246,9 +246,12 @@
   .metric-prev {
     font-size: 12px;
     font-weight: 600;
-    color: var(--accent-text);
+    color: #fff;
     white-space: nowrap;
     line-height: 1.2;
+    background: oklch(0.62 0.16 264);
+    padding: 2px 7px;
+    border-radius: 4px;
   }
   .metric-deadline {
     display: inline-flex;
