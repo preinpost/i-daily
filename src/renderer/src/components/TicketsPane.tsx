@@ -95,12 +95,13 @@ export function TicketsPane({ active }: { active: boolean }) {
 		localStorage.setItem(SORT_KEY, m);
 	}, []);
 
-	async function load(force?: boolean) {
+	async function load(force?: boolean, silent?: boolean) {
 		const jira = window.api?.jira;
 		if (!jira) return;
 		if (loaded.current && !force) return;
 		loaded.current = true;
-		setState((s) => ({ ...s, loading: true, error: undefined }));
+		// silent: 상태 전이 후의 조용한 재동기화 — 로딩 표시 없이 목록만 교체한다.
+		if (!silent) setState((s) => ({ ...s, loading: true, error: undefined }));
 		let r: any = null;
 		try {
 			r = await jira.tickets();
@@ -168,7 +169,8 @@ export function TicketsPane({ active }: { active: boolean }) {
 		toast(t.key + " 숨김 처리");
 	}, []);
 
-	// 전이 실행 → 성공 시 목록 새로고침(칸반 컬럼이 옮겨간다).
+	// 전이 실행 → 성공 시 낙관적으로 해당 티켓만 컬럼 이동 + 백그라운드 조용한 재동기화.
+	// (전체 목록 재조회를 로딩 화면으로 보여주던 기존 방식은 "페이지 새로고침"처럼 보여서 개선)
 	const runTransition = useCallback(
 		async (t: Ticket, tr: Trans) => {
 			const r = await window.api?.jira?.transition(t.key, tr.id);
@@ -177,9 +179,23 @@ export function TicketsPane({ active }: { active: boolean }) {
 					t.key + " 상태 변경 실패: " + (r?.error || "알 수 없는 오류"),
 				);
 			toast(t.key + " → " + (tr.to || tr.name));
-			// 상태가 바뀌었으니 해당 티켓의 캐시는 버린다.
+			// 상태가 바뀌었으니 해당 티켓의 전이 캐시는 버린다.
 			transCache.current.delete(t.key);
-			load(true);
+			// 낙관적 반영 — 전체 재조회 없이 로컬 상태만 고쳐 즉시 컬럼이 옮겨간다.
+			setState((s) => ({
+				...s,
+				tickets: s.tickets.map((x) =>
+					x.key === t.key
+						? {
+								...x,
+								status: tr.to || x.status,
+								statusCat: tr.cat || x.statusCat,
+							}
+						: x,
+				),
+			}));
+			// 백그라운드로 실제 목록과 재동기화(로딩 깜빡임 없이).
+			void load(true, true);
 		},
 		[],
 	);
