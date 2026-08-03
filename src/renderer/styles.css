@@ -24,6 +24,26 @@
   --warn-bg: oklch(0.97 0.03 85);
   --danger: oklch(0.58 0.2 25);
   --danger-soft: oklch(0.96 0.02 25);
+  /* 우선순위 5단계 (Highest=1 … Lowest=5) — 형광펜 배지 */
+  --prio-1-bg: oklch(0.94 0.04 25);
+  --prio-1: oklch(0.52 0.18 25);
+  --prio-2-bg: oklch(0.94 0.05 65);
+  --prio-2: oklch(0.55 0.15 55);
+  --prio-3-bg: oklch(0.95 0.06 95);
+  --prio-3: oklch(0.5 0.13 80);
+  --prio-4-bg: oklch(0.95 0.04 150);
+  --prio-4: oklch(0.5 0.14 155);
+  --prio-5-bg: oklch(0.955 0.012 250);
+  --prio-5: oklch(0.48 0.03 250);
+  /* 칸반 상태 카테고리 색 (할 일/진행 중/완료/기타) */
+  --cat-new-bg: oklch(0.95 0.03 300);
+  --cat-new: oklch(0.5 0.12 300);
+  --cat-ind-bg: oklch(0.94 0.045 250);
+  --cat-ind: oklch(0.5 0.14 255);
+  --cat-done-bg: oklch(0.95 0.04 150);
+  --cat-done: oklch(0.5 0.14 155);
+  --cat-rest-bg: oklch(0.965 0.008 260);
+  --cat-rest: oklch(0.5 0.02 260);
   --chip: oklch(0.96 0.01 250);
   --mono: oklch(0.975 0.004 250);
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
@@ -50,6 +70,26 @@
     --warn-bg: oklch(0.28 0.04 75);
     --danger: oklch(0.7 0.16 25);
     --danger-soft: oklch(0.28 0.04 25);
+    /* 우선순위 5단계 — 다크 모드 */
+    --prio-1-bg: oklch(0.3 0.055 25);
+    --prio-1: oklch(0.8 0.11 25);
+    --prio-2-bg: oklch(0.3 0.065 65);
+    --prio-2: oklch(0.82 0.1 60);
+    --prio-3-bg: oklch(0.31 0.065 95);
+    --prio-3: oklch(0.85 0.09 90);
+    --prio-4-bg: oklch(0.29 0.05 150);
+    --prio-4: oklch(0.8 0.09 155);
+    --prio-5-bg: oklch(0.27 0.018 250);
+    --prio-5: oklch(0.78 0.03 250);
+    /* 칸반 상태 카테고리 색 — 다크 모드 */
+    --cat-new-bg: oklch(0.29 0.045 300);
+    --cat-new: oklch(0.8 0.08 300);
+    --cat-ind-bg: oklch(0.28 0.05 250);
+    --cat-ind: oklch(0.8 0.09 255);
+    --cat-done-bg: oklch(0.28 0.045 150);
+    --cat-done: oklch(0.8 0.09 155);
+    --cat-rest-bg: oklch(0.27 0.015 260);
+    --cat-rest: oklch(0.78 0.02 260);
     --chip: oklch(0.26 0.015 260);
     --mono: oklch(0.18 0.015 260);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
@@ -388,6 +428,55 @@
     border: 1px solid var(--line);
     padding: 2px 8px;
     border-radius: 999px;
+  }
+
+  /* 우선순위 형광펜 배지 — 5단계(Highest=1 … Lowest=5), data-level 로 색 매핑 */
+  .prio-badge {
+    display: inline-block;
+    padding: 0 5px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.7;
+    border: 1px solid color-mix(in oklch, currentColor 18%, transparent);
+  }
+  .prio-badge[data-level="1"] {
+    background: var(--prio-1-bg);
+    color: var(--prio-1);
+  }
+  .prio-badge[data-level="2"] {
+    background: var(--prio-2-bg);
+    color: var(--prio-2);
+  }
+  .prio-badge[data-level="3"] {
+    background: var(--prio-3-bg);
+    color: var(--prio-3);
+  }
+  .prio-badge[data-level="4"] {
+    background: var(--prio-4-bg);
+    color: var(--prio-4);
+  }
+  .prio-badge[data-level="5"] {
+    background: var(--prio-5-bg);
+    color: var(--prio-5);
+  }
+
+  /* 칸반 컬럼 헤더 — 상태 카테고리별 배경(new/indeterminate/done/rest) */
+  .cat-head {
+    background: var(--cat-rest-bg);
+    color: var(--cat-rest);
+  }
+  .cat-head[data-cat="new"] {
+    background: var(--cat-new-bg);
+    color: var(--cat-new);
+  }
+  .cat-head[data-cat="indeterminate"] {
+    background: var(--cat-ind-bg);
+    color: var(--cat-ind);
+  }
+  .cat-head[data-cat="done"] {
+    background: var(--cat-done-bg);
+    color: var(--cat-done);
   }
 
   /* 스텝 배지 */

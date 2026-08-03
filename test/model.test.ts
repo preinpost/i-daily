@@ -16,7 +16,7 @@ import {
 	parseTeamsPaste,
 	parseTeamsTaskLine,
 } from "../src/shared/model.ts";
-import { kanbanColumns } from "../src/renderer/src/lib/model.ts";
+import { kanbanColumns, priorityLevel } from "../src/renderer/src/lib/model.ts";
 
 // jiraBase 는 렌더 함수에 인자로 전달(전역 아님). host만 — /browse/ 는 자동.
 const JIRA = "https://jira.test";
@@ -218,6 +218,18 @@ test("kanbanColumns: 우선순위 높은 순이 첫 조건 — 마감이 빨라�
 	expect(todo.items.map((t: any) => t.key).join(",")).toBe(
 		"AB-2,AB-3,AB-4,AB-1,AB-6,AB-5",
 	);
+});
+
+// ── 우선순위 배지 레벨 ── 표준 5단계만 1..5, 커스텀/미지정은 0
+test("priorityLevel: 표준 5단계(Highest=1 … Lowest=5), 그 외 0", () => {
+	expect(priorityLevel("Highest")).toBe(1);
+	expect(priorityLevel("highest")).toBe(1); // 대소문자 무시
+	expect(priorityLevel("High")).toBe(2);
+	expect(priorityLevel("Medium")).toBe(3);
+	expect(priorityLevel("Low")).toBe(4);
+	expect(priorityLevel("Lowest")).toBe(5);
+	expect(priorityLevel("CustomPrio")).toBe(0);
+	expect(priorityLevel("")).toBe(0);
 });
 
 // ── Teams 붙여넣기 → 일일 진행 ─────────────────────────

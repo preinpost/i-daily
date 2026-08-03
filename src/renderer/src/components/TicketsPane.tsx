@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useEditor } from "../context/EditorContext";
 import { useToast } from "./Toast";
 import { useContextMenu, type MenuItem } from "./ContextMenu";
-import { ensureDailyItem, kanbanColumns } from "../lib/model";
+import { ensureDailyItem, kanbanColumns, priorityLevel } from "../lib/model";
 import type { Ticket } from "../types";
 
 /* ── 숨긴 티켓 (localStorage) ── */
@@ -26,10 +26,12 @@ type Trans = { id: string; name: string; to: string; cat: string };
 
 // 칸반 3열과 같은 축 — 메뉴에서도 할일/진행중/완료 순서로 보여준다.
 const CAT_ORDER = ["new", "indeterminate", "done"];
+// 상태 카테고리 이모지 — 칸반 컬럼 헤더(텍스트 뒤)·전이 서브메뉴 공용.
 const CAT_ICON: Record<string, string> = {
-	new: "⬜️",
-	indeterminate: "🔵",
+	new: "📝",
+	indeterminate: "🔄",
 	done: "✅",
+	rest: "📦",
 };
 // 워크플로우가 준 순서 대신 카테고리 순으로 정렬(안정 정렬).
 function sortByCat(list: Trans[]): Trans[] {
@@ -194,6 +196,19 @@ export function TicketsPane({ active }: { active: boolean }) {
 		toast(t.key + " 다시 표시");
 	}, []);
 
+// 우선순위 형광펜 배지 — 표준 5단계(Highest=1 … Lowest=5)만 색칠, 그 외는 일반 텍스트.
+function PriorityBadge({ value }: { value?: string }) {
+	const name = (value || "").trim();
+	if (!name) return null;
+	const level = priorityLevel(name);
+	if (!level) return <span className="truncate">{name}</span>;
+	return (
+		<span className="prio-badge" data-level={level}>
+			{name}
+		</span>
+	);
+}
+
 	const visibleTickets = showHidden
 		? state.tickets.filter((t) => hidden.has(t.key))
 		: state.tickets.filter((t) => !hidden.has(t.key));
@@ -281,9 +296,12 @@ export function TicketsPane({ active }: { active: boolean }) {
 								key={col.cat}
 								className="flex min-w-0 flex-col rounded-card border border-line bg-panel-2 p-2.5"
 							>
-								<div className="mb-2.5 flex items-center justify-between gap-2 px-1.5 pb-2.5">
-									<span className="text-[13.5px] font-bold text-ink">
-										{col.title}
+								<div
+									className="cat-head mb-2.5 flex items-center justify-between gap-2 rounded-[6px] px-2.5 py-1.5"
+									data-cat={col.cat}
+								>
+									<span className="text-[13.5px] font-bold">
+										{col.title} {CAT_ICON[col.cat] || ""}
 									</span>
 									<span className="inline-grid h-5 min-w-[22px] place-items-center rounded-full border border-line bg-panel px-1.5 text-[11.5px] font-bold tabular-nums text-ink-2">
 										{col.items.length}
@@ -366,10 +384,10 @@ export function TicketsPane({ active }: { active: boolean }) {
 												>
 													{t.summary}
 												</div>
-												<div className="truncate text-[11.5px] font-medium text-ink-2">
-													{[t.status, t.type, t.priority]
-														.filter(Boolean)
-														.join(" · ")}
+												<div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] font-medium text-ink-2">
+													{t.status && <span className="truncate">{t.status}</span>}
+													{t.type && <span className="truncate">{t.type}</span>}
+													{t.priority && <PriorityBadge value={t.priority} />}
 												</div>
 											</div>
 										))

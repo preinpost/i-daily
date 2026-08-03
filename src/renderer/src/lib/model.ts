@@ -161,7 +161,7 @@ export function ensureDailyItem(
 	return { item, added: true };
 }
 
-// 티켓 우선순위 랭크 — Jira 표준 순서(Highest=1 … Lowest=5). 대소문자 무시.
+// 티켓 우선순위 — Jira 표준 순서(Highest=1 … Lowest=5). 대소문자 무시.
 const PRIORITY_RANK: Record<string, number> = {
 	highest: 1,
 	high: 2,
@@ -169,18 +169,24 @@ const PRIORITY_RANK: Record<string, number> = {
 	low: 4,
 	lowest: 5,
 };
-function priorityRank(t: Ticket): number {
-	const name = (t.priority || "").trim().toLowerCase();
-	if (!name) return Number.MAX_SAFE_INTEGER; // 우선순위 없음 → 맨 아래
-	return PRIORITY_RANK[name] ?? 6; // 표준 외(커스텀) → Lowest 아래
+// 정렬용 랭크: 표준 5단계 → 1..5, 표준 외(커스텀) → 6, 미지정 → 최대(맨 아래).
+function priorityRank(name: string | undefined): number {
+	const n = (name || "").trim().toLowerCase();
+	if (!n) return Number.MAX_SAFE_INTEGER;
+	return PRIORITY_RANK[n] ?? 6;
+}
+// 배지용 레벨: 표준 5단계만 1..5, 그 외(커스텀/미지정) → 0(배지 없음).
+export function priorityLevel(name: string): number {
+	const r = priorityRank(name);
+	return r <= 5 ? r : 0;
 }
 
 export type Kanban = { title: string; cat: string; items: Ticket[] };
 // 티켓 정렬 — ①우선순위 높은 순(젤 먼저) → ②마감 임박 순(오름차순), 마감 없으면 맨 아래 → ③동일 마감이면 키 내림차순.
 export function sortTickets(list: Ticket[]): Ticket[] {
 	return [...list].sort((a, b) => {
-		const pa = priorityRank(a);
-		const pb = priorityRank(b);
+		const pa = priorityRank(a.priority);
+		const pb = priorityRank(b.priority);
 		if (pa !== pb) return pa - pb;
 		const da = (a.due || "").trim();
 		const db = (b.due || "").trim();
