@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useEditor } from "../context/EditorContext";
 import { useToast } from "./Toast";
 import { useContextMenu, type MenuItem } from "./ContextMenu";
-import { ensureDailyItem, kanbanColumns, priorityLevel } from "../lib/model";
+import { ensureDailyItem, kanbanColumns, priorityLevel, type TicketSort } from "../lib/model";
 import type { Ticket } from "../types";
 
 /* ── 숨긴 티켓 (localStorage) ── */
@@ -16,6 +16,18 @@ function loadHidden(): Set<string> {
 }
 function saveHidden(s: Set<string>): void {
 	localStorage.setItem(HIDDEN_KEY, JSON.stringify([...s]));
+}
+
+/* ── 정렬 모드 (localStorage) ── */
+const SORT_KEY = "ticket-sort";
+const SORT_OPTIONS: { value: TicketSort; label: string; title: string }[] = [
+	{ value: "priority", label: "우선도순", title: "우선도 높은 순으로 보기" },
+	{ value: "latest", label: "최신순", title: "최신(업데이트) 티켓부터 보기" },
+	{ value: "due", label: "마감순", title: "마감 임박 순으로 보기" },
+];
+function loadSort(): TicketSort {
+	const v = localStorage.getItem(SORT_KEY);
+	return v === "latest" || v === "due" || v === "priority" ? v : "priority";
 }
 
 /* ── 전이 후보 캐시 ──
@@ -77,6 +89,11 @@ export function TicketsPane({ active }: { active: boolean }) {
 	}, []);
 	const [hidden, setHidden] = useState<Set<string>>(loadHidden);
 	const [showHidden, setShowHidden] = useState(false);
+	const [sort, setSort] = useState<TicketSort>(loadSort);
+	const changeSort = useCallback((m: TicketSort) => {
+		setSort(m);
+		localStorage.setItem(SORT_KEY, m);
+	}, []);
 
 	async function load(force?: boolean) {
 		const jira = window.api?.jira;
@@ -254,6 +271,24 @@ function PriorityBadge({ value }: { value?: string }) {
 						)}
 					</h2>
 					<div className="flex flex-wrap items-center gap-2">
+						<div className="flex items-center gap-0.5 rounded-full border border-line bg-panel p-0.5">
+							{SORT_OPTIONS.map((o) => (
+								<button
+									key={o.value}
+									type="button"
+									title={o.title}
+									className={
+										"rounded-full px-2.5 py-1 text-[11.5px] font-semibold transition-colors " +
+										(sort === o.value
+											? "bg-accent text-accent-ink"
+											: "text-ink-2 hover:text-ink")
+									}
+									onClick={() => changeSort(o.value)}
+								>
+									{o.label}
+								</button>
+							))}
+						</div>
 						<button
 							type="button"
 							className={
@@ -291,7 +326,7 @@ function PriorityBadge({ value }: { value?: string }) {
 					</p>
 				) : (
 					<div className="grid grid-cols-1 items-start gap-3.5 md:grid-cols-3">
-						{kanbanColumns(visibleTickets).map((col) => (
+						{kanbanColumns(visibleTickets, sort).map((col) => (
 							<div
 								key={col.cat}
 								className="flex min-w-0 flex-col rounded-card border border-line bg-panel-2 p-2.5"

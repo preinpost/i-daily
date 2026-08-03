@@ -232,6 +232,39 @@ test("priorityLevel: 표준 5단계(Highest=1 … Lowest=5), 그 외 0", () => {
 	expect(priorityLevel("")).toBe(0);
 });
 
+// ── 정렬 모드(latest/due) ── 헤더의 정렬 선택이 칸반 컬럼 안 순서를 바꾼다
+test("kanbanColumns: 최신순(latest) — updated 최신부터, 미지정은 맨 아래", () => {
+	const mk = (key: string, updated: string, statusCat = "new") =>
+		({ key, updated, statusCat, summary: "", status: "", url: "" }) as any;
+	const cols = kanbanColumns(
+		[
+			mk("AB-1", "2026-01-01T09:00:00.000+0000"),
+			mk("AB-2", "2026-06-01T09:00:00.000+0000"),
+			mk("AB-3", ""),
+			mk("AB-4", "2026-03-01T09:00:00.000+0000"),
+		],
+		"latest",
+	);
+	const todo = cols.find((c) => c.cat === "new")!;
+	expect(todo.items.map((t: any) => t.key).join(",")).toBe("AB-2,AB-4,AB-1,AB-3");
+});
+
+test("kanbanColumns: 마감순(due) — 마감 임박부터, 마감 없으면 아래", () => {
+	const mk = (key: string, due: string, statusCat = "new") =>
+		({ key, due, statusCat, summary: "", status: "", url: "" }) as any;
+	const cols = kanbanColumns(
+		[
+			mk("AB-1", ""),
+			mk("AB-2", "2026-03-10"),
+			mk("AB-3", "2026-01-05"),
+			mk("AB-4", "2026-01-05"),
+		],
+		"due",
+	);
+	const todo = cols.find((c) => c.cat === "new")!;
+	expect(todo.items.map((t: any) => t.key).join(",")).toBe("AB-4,AB-3,AB-2,AB-1");
+});
+
 // ── Teams 붙여넣기 → 일일 진행 ─────────────────────────
 test("parseTeamsTaskLine: Jira 키만 key, [고객명]은 desc 유지, 진척률", () => {
 	const a = parseTeamsTaskLine(

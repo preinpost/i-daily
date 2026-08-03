@@ -22,6 +22,7 @@ export type Ticket = {
 	type?: string;
 	priority?: string;
 	due?: string;
+	updated?: string;
 	url?: string;
 };
 

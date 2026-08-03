@@ -182,27 +182,48 @@ export function priorityLevel(name: string): number {
 }
 
 export type Kanban = { title: string; cat: string; items: Ticket[] };
-// 티켓 정렬 — ①우선순위 높은 순(젤 먼저) → ②마감 임박 순(오름차순), 마감 없으면 맨 아래 → ③동일 마감이면 키 내림차순.
-export function sortTickets(list: Ticket[]): Ticket[] {
+// 티켓 정렬 모드 — priority=우선도 높은 순(기본) / latest=최신(updated) 순 / due=마감 임박 순.
+export type TicketSort = "priority" | "latest" | "due";
+// Jira updated(ISO) → ms. 미지정/파싱 실패 → 0(맨 뒤로).
+function updatedMs(t: Ticket): number {
+	const s = (t.updated || "").trim();
+	if (!s) return 0;
+	const ms = Date.parse(s);
+	return Number.isNaN(ms) ? 0 : ms;
+}
+// 티켓 정렬 — mode 의 1차 키 → (priority 한정 우선도 동일 시 마감 임박) → 키 내림차순 꼬리.
+export function sortTickets(list: Ticket[], mode: TicketSort = "priority"): Ticket[] {
 	return [...list].sort((a, b) => {
-		const pa = priorityRank(a.priority);
-		const pb = priorityRank(b.priority);
-		if (pa !== pb) return pa - pb;
-		const da = (a.due || "").trim();
-		const db = (b.due || "").trim();
-		if (da !== db) {
-			if (!da) return 1; // 마감 없음 → 아래로
-			if (!db) return -1;
-			return da < db ? -1 : 1; // YYYY-MM-DD 는 사전순 = 시간순
+		if (mode === "latest") {
+			const d = updatedMs(b) - updatedMs(a); // 최신 먼저
+			if (d) return d;
+		} else if (mode === "due") {
+			const da = (a.due || "").trim();
+			const db = (b.due || "").trim();
+			if (da !== db) {
+				if (!da) return 1; // 마감 없음 → 아래로
+				if (!db) return -1;
+				return da < db ? -1 : 1; // YYYY-MM-DD 는 사전순 = 시간순
+			}
+		} else {
+			const d = priorityRank(a.priority) - priorityRank(b.priority);
+			if (d) return d;
+			const da = (a.due || "").trim();
+			const db = (b.due || "").trim();
+			if (da !== db) {
+				if (!da) return 1;
+				if (!db) return -1;
+				return da < db ? -1 : 1;
+			}
 		}
-		// 마감 동일(또는 둘 다 없음) → 티켓 이름 내림차순
+		// 공통 꼬리 — 티켓 이름 내림차순
 		return (b.key || "").localeCompare(a.key || "", undefined, {
 			numeric: true,
 			sensitivity: "base",
 		});
 	});
 }
-export function kanbanColumns(list: Ticket[]): Kanban[] {
+export function kanbanColumns(list: Ticket[], mode: TicketSort = "priority"): Kanban[] {
 	const cols: [string, string][] = [
 		["indeterminate", "진행 중"],
 		["new", "할 일"],
@@ -210,11 +231,14 @@ export function kanbanColumns(list: Ticket[]): Kanban[] {
 	];
 	const seen: Record<string, boolean> = {};
 	const out: Kanban[] = cols.map(([cat, title]) => {
-		const items = sortTickets(list.filter((t) => (t.statusCat || "") === cat));
+		const items = sortTickets(
+			list.filter((t) => (t.statusCat || "") === cat),
+			mode,
+		);
 		items.forEach((t) => (seen[t.key] = true));
 		return { title, cat, items };
 	});
-	const rest = sortTickets(list.filter((t) => !seen[t.key]));
+	const rest = sortTickets(list.filter((t) => !seen[t.key]), mode);
 	if (rest.length) out.push({ title: "기타", cat: "rest", items: rest });
 	return out;
 }
