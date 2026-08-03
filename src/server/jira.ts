@@ -316,7 +316,8 @@ export async function jiraTickets(backend: Backend, db: DB): Promise<any> {
 		return { ok: false, error: msg(e) };
 	}
 	try {
-		const jql = "assignee = currentUser() ORDER BY updated DESC";
+		// 우선순위 높은 순이 먼저(표시 정렬은 클라이언트 sortTickets 가 확정).
+		const jql = "assignee = currentUser() ORDER BY priority ASC, updated DESC";
 		const fields = "summary,status,priority,duedate,updated,issuetype,project";
 		const base = `https://api.atlassian.com/ex/jira/${t.cloudId}/rest/api/3/search/jql`;
 		const out: any[] = [];

@@ -202,6 +202,24 @@ test("kanbanColumns: 마감 임박 순 · 마감 없으면 맨 아래 · 동일 
 	);
 });
 
+// ── 내 티켓 정렬 ── 우선순위 높은 순이 젤 먼저(마감/키보다 우선)
+test("kanbanColumns: 우선순위 높은 순이 첫 조건 — 마감이 빨라도 낮은 우선순위가 뒤로", () => {
+	const mk = (key: string, priority: string, due: string, statusCat = "new") =>
+		({ key, priority, due, statusCat, summary: "", status: "", url: "" }) as any;
+	const cols = kanbanColumns([
+		mk("AB-1", "Low", "2026-01-01"), // 마감이 제일 빠르지만 낮은 우선순위
+		mk("AB-2", "Highest", ""), // 우선순위 최상 · 마감 없음
+		mk("AB-3", "high", "2026-06-01"), // 대소문자 무시
+		mk("AB-4", "Medium", "2026-03-01"),
+		mk("AB-5", "", "2026-02-01"), // 우선순위 없음 → 맨 아래
+		mk("AB-6", "CustomPrio", "2026-02-01"), // 표준 외 → Lowest 아래
+	]);
+	const todo = cols.find((c) => c.cat === "new")!;
+	expect(todo.items.map((t: any) => t.key).join(",")).toBe(
+		"AB-2,AB-3,AB-4,AB-1,AB-6,AB-5",
+	);
+});
+
 // ── Teams 붙여넣기 → 일일 진행 ─────────────────────────
 test("parseTeamsTaskLine: Jira 키만 key, [고객명]은 desc 유지, 진척률", () => {
 	const a = parseTeamsTaskLine(
