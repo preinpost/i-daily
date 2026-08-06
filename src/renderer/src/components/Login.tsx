@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useToast } from "./Toast";
 
-export function Login() {
+export function Login({ notice }: { notice?: string }) {
 	const toast = useToast();
 	const [busy, setBusy] = useState(false);
 	const [configured, setConfigured] = useState<boolean | null>(null);
@@ -52,8 +52,7 @@ export function Login() {
 				<div className="text-4xl">📋</div>
 				<h1 className="m-0 text-2xl font-extrabold text-ink">i-daily</h1>
 				<p className="m-0 text-[14px] leading-relaxed text-ink-2">
-					업무일지를 쓰려면 먼저 Jira(Atlassian) 계정으로 로그인하세요.
-					로그인하면 이름·사이트 주소가 자동으로 설정됩니다.
+					{notice ?? "업무일지를 쓰려면 먼저 Jira(Atlassian) 계정으로 로그인하세요."}로그인하면 이름·사이트 주소가 자동으로 설정됩니다.
 				</p>
 
 				<button

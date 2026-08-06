@@ -82,18 +82,60 @@ function esc(s: string): string {
 }
 
 // ───────────────────────── 상태 ─────────────────────────
+// 실제 세션 유효성 검증 — 액세스 토큰이 만료됐으면 refresh 를 시도하고,
+// refresh 조차 실패(토큰 무효/폐기)하면 저장된 인증을 지우고 invalid 로 판정해 재로그인을 유도한다.
+// (기존에는 토큰 행 존재 여부만 반환해, 만료된 세 션이 '연결됨'으로 보이던 문제 해소)
 export async function jiraStatus(backend: Backend, db: DB): Promise<any> {
 	const cc = clientCreds();
-	const t = await readJiraAuth(db, backend.user);
-	return {
+	const configured = !!(cc.clientId && cc.clientSecret);
+	const base = {
 		user: backend.user,
 		isSetup: backend.user === SETUP_USER,
-		// 서버 전역 OAuth 클라이언트가 설정되어 있고, user 의 jiraBase 가 있으면 ready.
-		configured: !!(cc.clientId && cc.clientSecret),
-		connected: !!t,
-		site: t?.siteName || "",
-		siteUrl: t?.siteUrl || "",
+		configured,
 	};
+	const t = await readJiraAuth(db, backend.user);
+	if (!configured)
+		return {
+			...base,
+			connected: false,
+			state: "not-configured",
+			reason: "서버에 Jira OAuth 클라이언트가 설정되지 않음",
+			site: "",
+			siteUrl: "",
+			expiresAt: null,
+		};
+	if (!t)
+		return {
+			...base,
+			connected: false,
+			state: "not-connected",
+			reason: "Jira에 연결되어 있지 않습니다",
+			site: "",
+			siteUrl: "",
+			expiresAt: null,
+		};
+	const expired = Date.now() >= t.expiresAt;
+	try {
+		const vt = await getValidToken(backend, db); // 만료 시 refresh, 실패 시 clear+throw
+		return {
+			...base,
+			connected: true,
+			state: expired ? "refreshed" : "ok",
+			site: t.siteName || "",
+			siteUrl: t.siteUrl || "",
+			expiresAt: vt.expiresAt,
+		};
+	} catch (e) {
+		return {
+			...base,
+			connected: false,
+			state: "invalid",
+			reason: msg(e) || "Jira 세션 만료 — 다시 로그인하세요.",
+			site: t.siteName || "",
+			siteUrl: t.siteUrl || "",
+			expiresAt: null,
+		};
+	}
 }
 
 // ───────────────────────── OAuth 시작 ─────────────────────────

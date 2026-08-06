@@ -6,6 +6,8 @@ import { kstParts } from "../../../shared/model.ts";
 type JiraStatus = {
 	connected?: boolean;
 	configured?: boolean;
+	state?: "ok" | "refreshed" | "not-connected" | "not-configured" | "invalid";
+	reason?: string;
 	site?: string;
 	siteUrl?: string;
 } | null;
@@ -567,9 +569,11 @@ export function ConfigPane({
 		? "—"
 		: js.connected
 			? "✅ " + "연결됨 — " + (js.site || js.siteUrl || "")
-			: js.configured
-				? "미연결 — 🔗 버튼으로 로그인하세요"
-				: "서버에 Jira OAuth 클라이언트가 설정되지 않음(관리자)";
+			: js.state === "invalid"
+				? "⚠️ 연결 만료 — " +(js.reason || "다시 로그인하세요")
+				: js.configured
+					? "미연결 — 🔗 버튼으로 로그인하세요"
+					: "서버에 Jira OAuth 클라이언트가 설정되지 않음(관리자)";
 	const connectLabel = js?.connected
 		? "🔄 다시 연결"
 		: me?.isSetup === false

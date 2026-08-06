@@ -55,6 +55,8 @@ export function App() {
 	// 자정을 넘겨도 '오늘'이 어제로 굳지 않는다.
 	const [curDate, setCurDate] = useState(() => todayStr());
 	const [teams, setTeams] = useState("");
+	// 로그인 세션(Better Auth) 만료로 인해 강제 로그인 게이트로 전환됐는지.
+	const [sessionExpired, setSessionExpired] = useState(false);
 	const [saveState, setSaveState] = useState({ cls: "", note: "—" });
 	const [, setVer] = useState(0);
 
@@ -372,6 +374,41 @@ export function App() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ready, authed]);
 
+	// 로그인 세션(Better Auth) 유효성 자동 감지.
+	// 세션이 만료되면 서버가 setup 유저로 강등돼 jiraBase·owner 가 비어 팀즈 링크 등이
+	// 조용히 빠지는 문제를 막기 위해, 감지 즉시 전체화면 로그인 게이트로 전환해 재로그인을 유도한다.
+	const sessionBusy = useRef(false);
+	async function checkSession() {
+		if (sessionBusy.current) return;
+		sessionBusy.current = true;
+		try {
+			const me = await window.api?.me?.();
+			if (me && me.isSetup && authed === true) {
+				setSessionExpired(true);
+				setAuthed(false);
+			}
+		} catch {
+			/* 네트워크 오류는 무시 — 다음 주기/포커스 때 재시도 */
+		} finally {
+			sessionBusy.current = false;
+		}
+	}
+	useEffect(() => {
+		if (authed !== true || !ready) return;
+		const onActive = () => {
+			if (document.visibilityState === "visible") checkSession();
+		};
+		document.addEventListener("visibilitychange", onActive);
+		window.addEventListener("focus", onActive);
+		const id = setInterval(checkSession, 5 * 60_000);
+		return () => {
+			document.removeEventListener("visibilitychange", onActive);
+			window.removeEventListener("focus", onActive);
+			clearInterval(id);
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [authed, ready]);
+
 	// Jira OAuth 팝업이 로그인 완료를 postMessage 로 알리면(= 새 sid 쿠키 반영됨) 재부팅.
 	// 새 세션 user(account_id) 로 config/일지를 다시 불러오기 위해 location.reload.
 	useEffect(() => {
@@ -406,9 +443,17 @@ export function App() {
 		history.replaceState(null, "", url);
 	}, [view]);
 
-	// 미로그인 → 전체화면 로그인 게이트(URL 은 그대로).
+	// 미로그인 → 전체화면 로그인 게이트(URL 은 그대로). 세션 만료로 전환된 경우 안내 문구를 붙인다.
 	if (authed === false) {
-		return <Login />;
+		return (
+			<Login
+				notice={
+					sessionExpired
+						? "로그인 세션이 만료되었습니다. 다시 로그인하면 기존 업무일지가 그대로 복원됩니다."
+						: undefined
+				}
+			/>
+		);
 	}
 
 	if (authed === null || !ready || !docRef.current) {
