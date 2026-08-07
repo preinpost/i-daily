@@ -420,8 +420,9 @@ export function App() {
 		return () => window.removeEventListener("message", onMsg);
 	}, []);
 
-	// ⌘S 저장
+	// ⌘S 저장 — 헤더가 있는 업무일지 탭에서만 동작
 	useEffect(() => {
+		if (view !== "log") return;
 		const onKey = (e: KeyboardEvent) => {
 			if ((e.metaKey || e.ctrlKey) && (e.key === "s" || e.key === "S")) {
 				e.preventDefault();
@@ -430,8 +431,7 @@ export function App() {
 		};
 		document.addEventListener("keydown", onKey);
 		return () => document.removeEventListener("keydown", onKey);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [view]);
 
 	useEffect(() => {
 		document.body.classList.toggle("viewing-web", view !== "log");
@@ -470,14 +470,18 @@ export function App() {
 		>
 			<div ref={chromeRef} className="app-chrome sticky top-0 z-[100]">
 				<Tabs view={view} onView={setView} />
-				<TopHeader
-					curDate={curDate}
-					meta={meta}
-					saveCls={saveState.cls}
-					saveNote={saveState.note}
-					onSave={saveNow}
-					onRevert={revert}
-				/>
+				{/* 상단 헤더(브랜드·날짜·저장·바로가기)는 업무일지 탭에서만 보인다 —
+				   다른 탭에선 불필요한 크롬이라 숨긴다(단축키도 헤더가 있는 곳에서만 동작). */}
+				{view === "log" && (
+					<TopHeader
+						curDate={curDate}
+						meta={meta}
+						saveCls={saveState.cls}
+						saveNote={saveState.note}
+						onSave={saveNow}
+						onRevert={revert}
+					/>
+				)}
 			</div>
 			<main className="mx-auto max-w-[980px] px-5 pb-12" hidden={view !== "log"}>
 				<DayCard
