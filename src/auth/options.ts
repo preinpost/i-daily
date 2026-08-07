@@ -26,6 +26,13 @@ export const betterAuthOptions = {
 	appName: "i-daily",
 	basePath: "/api/auth",
 	emailAndPassword: { enabled: false },
+	session: {
+		// 로그인 세션 2주 고정 + sliding 연장: 활성 요청이 오면 세션 만료를 다시 2주로 민다.
+		// updateAge(활동 시점 기준 재연장 주기)가 지난 요청마다 expiresAt 을 now+2주 로 갱신 →
+		// 매일/주기적으로 쓰는 유저는 사실상 로그아웃 없음. 2주 완전 미사용 시에만 재로그인.
+		expiresIn: 60 * 60 * 24 * 14, // 2주
+		updateAge: 60 * 60 * 12, // 12시간 활동마다 슬라이딩 연장
+	},
 	account: {
 		accountLinking: {
 			enabled: true,
