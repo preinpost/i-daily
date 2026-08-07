@@ -57,6 +57,90 @@ export type Api = {
 			key: string,
 			transitionId?: string,
 		) => Promise<{ ok: boolean; key?: string; name?: string; error?: string }>;
+		// 업무등록(티켓 생성)
+		createMeta: () => Promise<{
+			ok: boolean;
+			error?: string;
+			site?: string;
+			projects?: {
+				id: string;
+				key: string;
+				name: string;
+				issueTypes: { id: string; name: string; subtask: boolean }[];
+			}[];
+		}>;
+		// 프로젝트+이슈타입의 생성 필드 메타(required·type·allowedValues)
+		createFields: (
+			project: string,
+			issueType: string,
+		) => Promise<{
+			ok: boolean;
+			error?: string;
+			fields?: {
+				key: string;
+				name: string;
+				required: boolean;
+				type: string;
+				system: string;
+				allowedValues: { id: string; name: string; value?: string }[];
+			}[];
+		}>;
+		// 티켓 생성 실행
+		createIssue: (payload: {
+			projectKey: string;
+			issueTypeId: string;
+			fields: Record<string, unknown>;
+		}) => Promise<{
+			ok: boolean;
+			key?: string;
+			url?: string;
+			error?: string;
+		}>;
+		// 프로젝트 배정 가능 사용자(담당자/보고자 드롭박스용). current=로그인 accountId.
+		users: (project: string) => Promise<{
+			ok: boolean;
+			error?: string;
+			current?: string;
+			users?: {
+				accountId: string;
+				displayName: string;
+				emailAddress?: string;
+				active?: boolean;
+			}[];
+		}>;
+		// 프로젝트 내 이슈 검색(상위 항목/부모용) — 키/제목으로 검색.
+		searchIssues: (project: string, q?: string) => Promise<{
+			ok: boolean;
+			error?: string;
+			issues?: {
+				key: string;
+				summary: string;
+				type?: string;
+				status?: string;
+				url?: string;
+			}[];
+		}>;
+		// 티켓 상세(수정 폼 초기값)
+		get: (key: string) => Promise<any>;
+		// 수정 가능 필드 메타
+		editMeta: (key: string) => Promise<{
+			ok: boolean;
+			error?: string;
+			fields?: {
+				key: string;
+				name: string;
+				required: boolean;
+				type: string;
+				system: string;
+				allowedValues: { id: string; name: string; value?: string }[];
+			}[];
+		}>;
+		// 티켓 수정(변경할 필드만)
+		edit: (key: string, fields: Record<string, unknown>) => Promise<{
+			ok: boolean;
+			key?: string;
+			error?: string;
+		}>;
 	};
 	me: () => Promise<{ user: string; isSetup: boolean } | null>;
 	/** Microsoft Graph 보조 연결(Atlassian 로그인 유지). */

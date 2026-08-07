@@ -1,5 +1,6 @@
 import { useEditor, EditorContent, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
@@ -98,6 +99,7 @@ export function MarkdownEditor({ value, onChange, placeholder }: Props) {
         // 코드블록 안에서 Tab/Shift-Tab 들여쓰기 활성화 (기본값 false)
         codeBlock: { enableTabIndentation: true, tabSize: 2 },
       }),
+      Image.configure({ inline: false, allowBase64: true }),
       TabHandling,
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -135,6 +137,39 @@ export function MarkdownEditor({ value, onChange, placeholder }: Props) {
       editor.commands.setContent(value || "", { emitUpdate: false });
     }
   }, [value, editor]);
+
+  // 설명 내부 이미지 로드 실패(붙여넣기 이미지는 Jira 공개 API 로 조회 불가) →
+  // 깨진 아이콘 대신 안내 문구로 교체. 이미지 노드는 Doc 에 유지되어 저장 시 보존된다.
+  // 주의: 프록시가 즉시 4xx 로 응답하면 error 이벤트가 리스너 장착 전에 지나간다.
+  //       그래서 이미 실패한 <img>(complete+naturalWidth=0) 는 즉시 교체한다.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom as HTMLElement;
+    const replace = (img: HTMLImageElement) => {
+      if ((img as any).__mdPh) return;
+      (img as any).__mdPh = true;
+      const ph = document.createElement("span");
+      ph.textContent =
+        "🖼️ [이미지: 붙여넣기 이미지는 편집기에서 렌더 불가 · 저장 시 보존]";
+      ph.title = img.getAttribute("src") || "";
+      ph.style.cssText =
+        "display:inline-block;padding:10px 12px;margin:6px 0;border-radius:6px;" +
+        "background:var(--panel-2);border:1px dashed var(--line-strong);color:var(--ink-2);font-size:12.5px;";
+      img.replaceWith(ph);
+    };
+    const bind = () => {
+      dom.querySelectorAll("img").forEach((img) => {
+        if ((img as any).__mdPh) return;
+        if (img.complete && img.naturalWidth === 0) replace(img);
+        else img.addEventListener("error", () => replace(img), { once: true });
+      });
+    };
+    bind();
+    // value 갱신(setContent) 으로 새 <img> 가 생기는 경우 재바인딩.
+    const ro = new MutationObserver(bind);
+    ro.observe(dom, { childList: true, subtree: true });
+    return () => ro.disconnect();
+  }, [editor, value]);
 
   return (
     <div className="md-wrap">

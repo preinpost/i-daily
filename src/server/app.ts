@@ -22,6 +22,15 @@ import {
 	jiraTransitions,
 	jiraTransition,
 	jiraLogout,
+	jiraCreateMeta,
+	jiraCreateFields,
+	jiraCreateIssue,
+	jiraProjectUsers,
+	jiraSearchIssues,
+	jiraGetIssue,
+	jiraEditMeta,
+	jiraEditIssue,
+	jiraImage,
 } from "./jira.ts";
 import {
 	microsoftStatus,
@@ -186,8 +195,52 @@ export function buildApp(
 			useBetterAuth: true,
 		});
 	});
+	// ── 업무등록(티켓 생성) ─────────────────────────
 	app.get("/api/jira/tickets", async (c) => {
 		return c.json(await jiraTickets(backend, db));
+	});
+	app.get("/api/jira/createmeta", async (c) => {
+		return c.json(await jiraCreateMeta(backend, db));
+	});
+	app.get("/api/jira/createmeta/fields", async (c) => {
+		const project = c.req.query("project") || "";
+		const issuetype = c.req.query("issuetype") || "";
+		return c.json(await jiraCreateFields(backend, db, project, issuetype));
+	});
+	app.post("/api/jira/issue", async (c) => {
+		const b = (await c.req.json().catch(() => ({}))) as any;
+		return c.json(await jiraCreateIssue(backend, db, b));
+	});
+	app.get("/api/jira/users", async (c) => {
+		const project = c.req.query("project") || "";
+		return c.json(await jiraProjectUsers(backend, db, project));
+	});
+	app.get("/api/jira/issues", async (c) => {
+		const project = c.req.query("project") || "";
+		const q = c.req.query("q") || "";
+		return c.json(await jiraSearchIssues(backend, db, project, q));
+	});
+	// ── 티켓 수정 ──
+	app.get("/api/jira/issue", async (c) => {
+		const key = c.req.query("key") || "";
+		return c.json(await jiraGetIssue(backend, db, key));
+	});
+	app.get("/api/jira/editmeta", async (c) => {
+		const key = c.req.query("key") || "";
+		return c.json(await jiraEditMeta(backend, db, key));
+	});
+	// Jira 첨부 이미지 프록시 (에디터에서 설명 이미지 표시용).
+	app.get("/api/jira/image", async (c) => {
+		const id = c.req.query("id") || "";
+		const r = await jiraImage(backend, db, id);
+		if (!r.ok) return c.json({ ok: false, error: r.error }, 400);
+		c.header("Content-Type", r.contentType);
+		c.header("Cache-Control", "private, max-age=86400");
+		return c.body(new Uint8Array(r.buffer));
+	});
+	app.put("/api/jira/issue", async (c) => {
+		const b = (await c.req.json().catch(() => ({}))) as any;
+		return c.json(await jiraEditIssue(backend, db, b.key || "", b.fields || {}));
 	});
 	app.put("/api/jira/due", async (c) => {
 		const b = (await c.req.json().catch(() => ({}))) as {

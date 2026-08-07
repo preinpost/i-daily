@@ -4,6 +4,8 @@ import { useToast } from "./Toast";
 import { useContextMenu, type MenuItem } from "./ContextMenu";
 import { ensureDailyItem, kanbanColumns, priorityLevel, type TicketSort } from "../lib/model";
 import type { Ticket } from "../types";
+import { TicketCreatePane } from "./TicketCreatePane";
+import { TicketEditPane } from "./TicketEditPane";
 
 /* ── 숨긴 티켓 (localStorage) ── */
 const HIDDEN_KEY = "hidden-tickets";
@@ -89,6 +91,8 @@ export function TicketsPane({ active }: { active: boolean }) {
 	}, []);
 	const [hidden, setHidden] = useState<Set<string>>(loadHidden);
 	const [showHidden, setShowHidden] = useState(false);
+	const [showCreate, setShowCreate] = useState(false);
+	const [editingKey, setEditingKey] = useState<string | null>(null);
 	const [sort, setSort] = useState<TicketSort>(loadSort);
 	const changeSort = useCallback((m: TicketSort) => {
 		setSort(m);
@@ -277,6 +281,35 @@ function PriorityBadge({ value }: { value?: string }) {
 			className="fixed inset-x-0 bottom-0 top-[var(--chrome-offset,48px)] z-40 flex flex-col overflow-y-auto bg-bg"
 		>
 			<div className="mx-auto w-full max-w-[1120px] px-5 pb-12 pt-5">
+				{editingKey ? (
+					<TicketEditPane
+						ticket={
+							state.tickets.find((t) => t.key === editingKey) || {
+								key: editingKey,
+							}
+						}
+						onClose={() => setEditingKey(null)}
+						onUpdated={() => void load(true)}
+					/>
+				) : showCreate ? (
+					<TicketCreatePane
+						onCreated={(t) => {
+							// 내게 할당된 티켓 목록에 바로 반영되도록 재조회.
+							void load(true);
+							addToDaily({
+								key: t.key,
+								summary: t.summary,
+								status: "",
+								statusCat: "",
+								type: "",
+								priority: "",
+								url: "",
+							} as Ticket);
+						}}
+						onViewChange={(v) => setShowCreate(v === "create")}
+					/>
+				) : (
+				<>
 				<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
 					<h2 className="m-0 inline-flex items-baseline gap-2 text-[18px] font-bold tracking-[-0.02em] text-ink">
 						{showHidden ? "숨긴 업무" : "내 티켓"}
@@ -294,17 +327,27 @@ function PriorityBadge({ value }: { value?: string }) {
 									type="button"
 									title={o.title}
 									className={
-										"rounded-full px-2.5 py-1 text-[11.5px] font-semibold transition-colors " +
-										(sort === o.value
-											? "bg-accent text-accent-ink"
-											: "text-ink-2 hover:text-ink")
-									}
-									onClick={() => changeSort(o.value)}
+											"rounded-full px-2.5 py-1 text-[11.5px] font-semibold transition-colors " +
+											(sort === o.value
+												? "bg-accent text-accent-ink"
+												: "text-ink-2 hover:text-ink")
+										}
+										onClick={() => changeSort(o.value)}
 								>
 									{o.label}
 								</button>
 							))}
 						</div>
+						<button
+							type="button"
+							className={
+								"btn btn-primary" + (showCreate ? " text-accent-ink" : "")
+							}
+							title="새 업무 등록 (Jira 티켓 생성)"
+							onClick={() => setShowCreate(true)}
+						>
+							+ 업무등록
+						</button>
 						<button
 							type="button"
 							className={
@@ -405,6 +448,10 @@ function PriorityBadge({ value }: { value?: string }) {
 																		onClick: () => addToDaily(t),
 																	},
 																	{
+																		label: "티켓 수정",
+																		onClick: () => setEditingKey(t.key),
+																	},
+																	{
 																		label: "상태 변경",
 																		children: loadTransitions(t),
 																	},
@@ -447,6 +494,8 @@ function PriorityBadge({ value }: { value?: string }) {
 							</div>
 						))}
 					</div>
+				)}
+				</>
 				)}
 			</div>
 		</div>

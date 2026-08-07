@@ -25,6 +25,16 @@ import {
 } from "../shared/report.ts";
 import { generateReport } from "../server/agent.ts";
 import {
+	jiraCreateMeta,
+	jiraCreateFields,
+	jiraCreateIssue,
+	jiraProjectUsers,
+	jiraSearchIssues,
+	jiraGetIssue,
+	jiraEditMeta,
+	jiraEditIssue,
+} from "../server/jira.ts";
+import {
 	listWeeklyReports,
 	getWeeklyReport,
 	putWeeklyReport,
@@ -539,6 +549,171 @@ export function createIDailyMcpServer(env: Env, props: McpProps): McpServer {
 				date: d,
 				...dayResponse(cfg.jiraBase, doc),
 			});
+		},
+	);
+
+	// ── jira 업무등록 (티켓 생성) ─────────────────────────
+	// 에이전트가 티켓을 만들려면 다음 순서로 쓴다:
+	//   1) jira_create_meta  → project_key 결정
+	//   2) jira_create_fields → issue_type_id·입력 필드 확인
+	//   3) jira_project_users → 담당자/보고자 accountId 확인
+	//   4) jira_create_issue → 생성
+
+	server.registerTool(
+		"jira_create_meta",
+		{
+			description:
+				"Jira 티켓 생성용 메타(생성 가능한 프로젝트 + 각 프로젝트의 이슈타입)를 반환한다(읽기). " +
+				"create_issue 전에 이걸 호출해 project_key/issue_type_id 를 정하라. " +
+				"기본 담당자/보고자는 로그인 계정을 쓴다.",
+			inputSchema: {},
+		},
+		async () => {
+			const r = await jiraCreateMeta(backendOf(env, props), dbOf(env));
+			return text(r);
+		},
+	);
+
+	server.registerTool(
+		"jira_create_fields",
+		{
+			description:
+				"특정 프로젝트+이슈타입의 생성 필드(required·type·allowedValues)를 반환한다(읽기). " +
+				"create_issue 로 보낼 fields 키/값 형태를 결정하는 데 쓴다. " +
+				"summary 는 필수, priority 는 {id}, assignee/reporter 는 {accountId}, labels 는 string[], components 는 [{id}] 형태.",
+			inputSchema: {
+				project: z
+					.string()
+					.describe("프로젝트 키 (예: IIPQ)"),
+				issue_type: z.string().describe("이슈타입 id (create_meta 응답의 id)"),
+			},
+		},
+		async ({ project, issue_type }) => {
+			const r = await jiraCreateFields(
+				backendOf(env, props),
+				dbOf(env),
+				project,
+				issue_type,
+			);
+			return text(r);
+		},
+	);
+
+	server.registerTool(
+		"jira_project_users",
+		{
+			description:
+				"프로젝트에 배정 가능한 사용자 목록(accountId/displayName/email)을 반환한다(읽기). " +
+				"current 는 로그인 계정의 accountId(/me) — 담당자·보고자 기본값으로 쓴다. " +
+				"assignee/reporter 를 지정할 때 accountId 를 이걸로 확인하라.",
+			inputSchema: {
+				project: z.string().describe("프로젝트 키 (예: IIPQ)"),
+			},
+		},
+		async ({ project }) => {
+			const r = await jiraProjectUsers(backendOf(env, props), dbOf(env), project);
+			return text(r);
+		},
+	);
+
+	server.registerTool(
+		"jira_search_issues",
+		{
+			description:
+				"프로젝트 내 이슈를 검색한다(읽기). 상위 항목(부모 티켓)을 정할 때 쓴다. " +
+				"q 는 티켓 키(예: IIPQ-123) 또는 제목 부분일치. " +
+				"응답 issues 의 key 를 create_issue 의 fields.parent 로 보내라 ({key}).",
+			inputSchema: {
+				project: z.string().describe("프로젝트 키 (예: IIPQ)"),
+				q: z
+					.string()
+					.optional()
+					.describe("검색어(키 또는 제목). 비우면 최근 이슈"),
+			},
+		},
+		async ({ project, q }) => {
+			const r = await jiraSearchIssues(
+				backendOf(env, props),
+				dbOf(env),
+				project,
+				q || "",
+			);
+			return text(r);
+		},
+	);
+
+	server.registerTool(
+		"jira_create_issue",
+		{
+			description:
+				"Jira 티켓을 생성한다(쓰기). fields.summary 필수. assignee/reporter 는 {accountId}, priority 는 {id}, duedate 는 YYYY-MM-DD, labels 는 string[], components 는 [{id}]. " +
+				"생성 후 key/url 를 반환한다. 실패 시 errors 를 그대로 반환하므로 이를 보고 수정해 재시도하라.",
+			inputSchema: {
+				project_key: z.string().describe("프로젝트 키 (예: IIPQ)"),
+				issue_type_id: z.string().describe("이슈타입 id"),
+				fields: z
+					.record(z.string(), z.any())
+					.describe("Jira field key → 값 (summary 필수)"),
+			},
+		},
+		async ({ project_key, issue_type_id, fields }) => {
+			const r = await jiraCreateIssue(backendOf(env, props), dbOf(env), {
+				projectKey: project_key,
+				issueTypeId: issue_type_id,
+				fields,
+			});
+			return text(r);
+		},
+	);
+
+	server.registerTool(
+		"jira_get_issue",
+		{
+			description:
+				"티켓 상세를 반환한다(읽기). summary/descriptionMd(마크다운)/priority/duedate/labels/components/assignee/reporter/parent/issueTypeName 등. " +
+				"edit_issue 전에 현재 값을 확인하고, description 은 descriptionMd 를 마크다운으로 돌려보내면 된다.",
+			inputSchema: {
+				key: z.string().describe("티켓 키 (예: IIPQ-10)"),
+			},
+		},
+		async ({ key }) => {
+			const r = await jiraGetIssue(backendOf(env, props), dbOf(env), key);
+			return text(r);
+		},
+	);
+
+	server.registerTool(
+		"jira_edit_fields",
+		{
+			description:
+				"티켓 수정 가능한 필드 메타(required·allowedValues)를 반환한다(읽기). edit_issue 로 보낼 fields 형태를 결정하는 데 쓴다.",
+			inputSchema: {
+				key: z.string().describe("티켓 키"),
+			},
+		},
+		async ({ key }) => {
+			const r = await jiraEditMeta(backendOf(env, props), dbOf(env), key);
+			return text(r);
+		},
+	);
+
+	server.registerTool(
+		"jira_edit_issue",
+		{
+			description:
+				"티켓을 수정한다(쓰기, 삭제 없음). 변경할 field 만 보낸다. description 은 마크다운 문자열로 보내면 ADF로 변환된다. " +
+				"assignee/reporter 는 {accountId}, priority 는 {id}, labels 는 string[], components 는 [{id}], parent 는 {key}. " +
+				"성공 시 ok:true,key 를 반환한다.",
+			inputSchema: {
+				key: z.string().describe("티켓 키 (예: IIPQ-10)"),
+				fields: z
+					.record(z.string(), z.any())
+					.describe("변경할 Jira field key → 값"),
+			},
+		},
+		async ({ key, fields }) => {
+			const r = await jiraEditIssue(backendOf(env, props), dbOf(env), key, fields);
+			return text(r);
 		},
 	);
 

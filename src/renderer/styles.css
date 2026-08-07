@@ -823,6 +823,13 @@
 .md-editor ul { list-style: disc; }
 .md-editor ol { list-style: decimal; }
 .md-editor li > p { margin: 0; }
+.md-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  margin: 6px 0;
+}
 .md-editor a {
   color: var(--accent);
   text-decoration: underline;

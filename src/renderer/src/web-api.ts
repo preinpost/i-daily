@@ -103,6 +103,24 @@ export const webApi: Api = {
 			get("/api/jira/transitions?key=" + encodeURIComponent(key)),
 		transition: (key: string, transitionId?: string) =>
 			post("/api/jira/transition", { key, transitionId }),
+		createMeta: () => get("/api/jira/createmeta"),
+		createFields: (project: string, issueType: string) =>
+			get(
+				`/api/jira/createmeta/fields?project=${encodeURIComponent(project)}&issuetype=${encodeURIComponent(issueType)}`,
+			),
+		createIssue: (payload) => post("/api/jira/issue", payload),
+		users: (project: string) =>
+			get("/api/jira/users?project=" + encodeURIComponent(project)),
+		searchIssues: (project: string, q?: string) =>
+			get(
+				`/api/jira/issues?project=${encodeURIComponent(project)}&q=${encodeURIComponent(q || "")}`,
+			),
+		get: (key: string) =>
+			get("/api/jira/issue?key=" + encodeURIComponent(key)),
+		editMeta: (key: string) =>
+			get("/api/jira/editmeta?key=" + encodeURIComponent(key)),
+		edit: (key: string, fields) =>
+			put("/api/jira/issue", { key, fields }),
 	},
 	me: () => get("/api/me"),
 	microsoft: {
