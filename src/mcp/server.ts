@@ -11,8 +11,10 @@ import {
 	parseDoc,
 	carryNew,
 	appendDailyTasks,
+	appendMemo,
 	dailyItemsOf,
 	type Doc,
+	type Section,
 	type ListItem,
 } from "../shared/model.ts";
 import {
@@ -511,6 +513,56 @@ export function createIDailyMcpServer(env: Env, props: McpProps): McpServer {
 				added: added.length,
 				items: added,
 				daily: dailyItemsOf(doc),
+			});
+		},
+	);
+
+	server.registerTool(
+		"add_memo",
+		{
+			description:
+				"메모(raw) 섹션에 텍스트를 추가한다(쓰기). 기본 섹션은 '메모'. 기존 본문 뒤에 한 줄 띄고 이어 붙이고, 섹션이 없으면 생성한다. 일지가 없으면 create_if_missing 시 carry 로 생성. 회의·아이디어·기록 등 자유 텍스트를 남길 때 쓴다.",
+			inputSchema: {
+				date: DATE,
+				text: z
+					.string()
+					.min(1)
+					.describe("추가할 메모 텍스트(기존 본문 뒤에 이어 붙임)"),
+				section: z
+					.string()
+					.optional()
+					.describe("추가할 raw 섹션 제목(기본 '메모')"),
+				create_if_missing: z
+					.boolean()
+					.optional()
+					.describe("일지 없으면 carry 생성 후 추가(기본 true)"),
+			},
+		},
+		async ({ date, text: memoText, section, create_if_missing }) => {
+			const d = resolveDate(date);
+			const backend = backendOf(env, props);
+			const cfg = await backend.readConfig();
+			const createMissing = create_if_missing !== false;
+			let doc = await backend.store.get(d);
+			let created = false;
+			if (!doc) {
+				if (!createMissing) return err(`not found: ${d}`);
+				doc = await carryNew(backend.store, d, cfg.owner);
+				created = true;
+			}
+			const target = section || "메모";
+			const appended = appendMemo(doc, memoText || "", target);
+			if (!appended) return err("no non-empty text");
+			await backend.store.put(d, doc);
+			const sec = doc.sections.find(
+				(s) => s.title === target,
+			) as Extract<Section, { kind: "raw" }> | undefined;
+			return text({
+				ok: true,
+				date: d,
+				created,
+				section: target,
+				memo: sec?.body ?? "",
 			});
 		},
 	);

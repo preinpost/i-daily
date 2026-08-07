@@ -1027,6 +1027,25 @@ export function appendDailyTasks(doc: Doc, items: ListItem[]): ListItem[] {
 	return added;
 }
 
+// raw 섹션(기본 '메모')에 텍스트를 append. 섹션이 없으면 생성. 기존 본문 뒤에 한 줄 띄고 이어 붙인다. 추가된 텍스트 반환(빈 값이면 "").
+export function appendMemo(
+	doc: Doc,
+	text: string,
+	section = "메모",
+): string {
+	const t = (text || "").trim();
+	if (!t) return "";
+	const sec = doc.sections.find(
+		(s) => s.kind === "raw" && s.title === section,
+	) as (Section & { kind: "raw" }) | undefined;
+	if (sec) {
+		sec.body = sec.body.trim() ? sec.body.trim() + "\n\n" + t : t;
+	} else {
+		doc.sections.push({ title: section, kind: "raw", body: t });
+	}
+	return t;
+}
+
 export async function carryNew(
 	store: Store,
 	date: string,

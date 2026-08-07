@@ -11,6 +11,7 @@ import {
 	todayStr,
 	kstParts,
 	appendDailyTasks,
+	appendMemo,
 	emptyDoc,
 	dailyItemsOf,
 	parseTeamsPaste,
@@ -476,6 +477,33 @@ test("appendDailyTasks: list 섹션에 구조화 항목 추가·빈 항목 스�
 	expect(added[0].key).toBe("OPIT-1");
 	expect(added[0].subs).toEqual(["하위1"]);
 	expect(dailyItemsOf(doc).map((x) => x.desc)).toEqual(["a", "메모만"]);
+});
+
+// ── MCP/에이전트용 메모 append ──
+test("appendMemo: 기존 메모에 이어 붙이고, 없는 섹션은 생성", () => {
+	const doc = emptyDoc("2026-07-10", "홍길동");
+	// 기본 '메모' 섹션에 append(첫 추가)
+	expect(appendMemo(doc, "첫 메모")).toBe("첫 메모");
+	expect(appendMemo(doc, "둘째 메모")).toBe("둘째 메모");
+	expect((doc.sections.find((s) => s.title === "메모") as any).body).toBe(
+		"첫 메모\n\n둘째 메모",
+	);
+
+	// 새 섹션 생성 후 추가 — 기존 메모와 별개 섹션
+	const created = appendMemo(doc, "별도 기록", "회의 노트");
+	expect(created).toBe("별도 기록");
+	const sec = doc.sections.find((s) => s.title === "회의 노트") as any;
+	expect(sec.kind).toBe("raw");
+	expect(sec.body).toBe("별도 기록");
+	// 같은 섹션에 다시 추가 → append
+	expect(appendMemo(doc, "회의 이어서", "회의 노트")).toBe("회의 이어서");
+	expect(sec.body).toBe("별도 기록\n\n회의 이어서");
+
+	// 빈 텍스트는 무시
+	expect(appendMemo(doc, "   ")).toBe("");
+	expect((doc.sections.find((s) => s.title === "메모") as any).body).toBe(
+		"첫 메모\n\n둘째 메모",
+	);
 });
 
 // ── 업무일지 내보내기(멀티데이 조립) ──

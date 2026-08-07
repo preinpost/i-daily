@@ -6,6 +6,7 @@ import {
 	carryNew,
 	parseDoc,
 	appendDailyTasks,
+	appendMemo,
 	dailyItemsOf,
 	serializeDoc,
 } from "../src/shared/model.ts";
@@ -70,6 +71,35 @@ test("add_daily_task: 없는 날 carry 생성 후 구조화 항목 추가", asyn
 	expect(dailyItemsOf(got!)[0].space).toBe("qa");
 	expect(dailyItemsOf(got!)[0].progress).toBe(10);
 	expect(dailyItemsOf(got!)[0].subs).toEqual(["세부"]);
+});
+
+test("add_memo: 기존 메모 append·새 섹션 생성, 없는 날 carry 생성", async () => {
+	const backend = d1Backend(await freshDb(), U);
+	await backend.writeConfig({ owner: "홍길동", jiraBase: "https://jira.test" });
+	const d = "2026-07-13";
+
+	// add_memo 동일 로직: 없는 날 carry 생성 후 기본 '메모' 섹션에 추가
+	let doc = await backend.store.get(d);
+	expect(doc).toBe(null);
+	doc = await carryNew(backend.store, d, "홍길동");
+	expect(appendMemo(doc, "아이디어 기록")).toBe("아이디어 기록");
+	expect(appendMemo(doc, "두 번째")).toBe("두 번째");
+	// 새 섹션 생성 후 추가
+	expect(appendMemo(doc, "회의 내용", "회의 노트")).toBe("회의 내용");
+	await backend.store.put(d, doc);
+
+	const got = await backend.store.get(d);
+	const memo = got!.sections.find((s) => s.title === "메모") as any;
+	expect(memo.body).toBe("아이디어 기록\n\n두 번째");
+	const meeting = got!.sections.find((s) => s.title === "회의 노트") as any;
+	expect(meeting.kind).toBe("raw");
+	expect(meeting.body).toBe("회의 내용");
+
+	// 직렬화 왕복에 모두 보존
+	const round = serializeDoc("https://jira.test", got!);
+	expect(round).toContain("아이디어 기록");
+	expect(round).toContain("두 번째");
+	expect(round).toContain("회의 내용");
 });
 
 test("put_day_markdown: 마크다운 저장 후 get 왕복", async () => {
